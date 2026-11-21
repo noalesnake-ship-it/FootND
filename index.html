@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#1b1464">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icon-192.png">
+<meta name="apple-mobile-web-app-title" content="Kick Brawl">
+<title>Kick Brawl 3D</title>
+<link href="https://fonts.googleapis.com/css2?family=Lilita+One&display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent;-webkit-touch-callout:none;-webkit-user-select:none;user-select:none}
+html,body{margin:0;height:100%;overflow:hidden;background:#1b1464;font-family:'Lilita One','Arial Black',Impact,sans-serif;color:#fff;touch-action:none;overscroll-behavior:none}
+#c{position:fixed;inset:0;width:100%;height:100%;display:block}
+#touch{position:fixed;inset:0;z-index:5;touch-action:none}
+.hidden{display:none!important}
+.stroke{text-shadow:0 2px 0 #1a1a2e,0 -2px 0 #1a1a2e,2px 0 0 #1a1a2e,-2px 0 0 #1a1a2e,2px 2px 0 #1a1a2e,-2px -2px 0 #1a1a2e,2px -2px 0 #1a1a2e,-2px 2px 0 #1a1a2e,0 4px 0 #1a1a2e}
+.btn{font:inherit;font-size:22px;color:#fff;border:4px solid #14122e;border-radius:14px;padding:10px 20px;cursor:pointer;background:linear-gradient(#ffe14d,#ffb300);color:#fff;text-shadow:0 2px 0 #14122e,2px 0 0 #14122e,-2px 0 0 #14122e,0 -2px 0 #14122e;box-shadow:0 6px 0 #8a5a00,0 8px 10px rgba(0,0,0,.4);transition:transform .06s}
+.btn:active{transform:translateY(4px);box-shadow:0 2px 0 #8a5a00}
+.btn.green{background:linear-gradient(#7dff5a,#1fbf2a);box-shadow:0 6px 0 #0d6b14,0 8px 10px rgba(0,0,0,.4)}
+.btn.green:active{box-shadow:0 2px 0 #0d6b14}
+.btn.blue{background:linear-gradient(#5bc0ff,#1f77e6);box-shadow:0 6px 0 #0b3f8f,0 8px 10px rgba(0,0,0,.4)}
+.btn.red{background:linear-gradient(#ff7a7a,#e32b2b);box-shadow:0 6px 0 #7a1010,0 8px 10px rgba(0,0,0,.4)}
+.btn.grey{background:linear-gradient(#aab,#778);box-shadow:0 6px 0 #445}
+.btn:disabled{filter:grayscale(.9) brightness(.8);pointer-events:none}
+.btn.big{font-size:42px;padding:14px 46px;border-radius:20px}
+.btn.small{font-size:16px;padding:6px 12px;border-width:3px;border-radius:10px}
+
+/* HUD */
+#hud{position:fixed;inset:0;z-index:10;pointer-events:none}
+#score{position:absolute;top:calc(8px + env(safe-area-inset-top));left:50%;transform:translateX(-50%);display:flex;align-items:center;gap:0;filter:drop-shadow(0 4px 0 rgba(0,0,0,.35))}
+#score .tm{width:64px;height:48px;display:flex;align-items:center;justify-content:center;font-size:34px;border:4px solid #14122e}
+#score .tm.blue{background:linear-gradient(#5bc0ff,#1f6fe0);border-radius:14px 0 0 14px}
+#score .tm.red{background:linear-gradient(#ff7a7a,#e02020);border-radius:0 14px 14px 0}
+#clock{min-width:84px;height:48px;background:#14122e;display:flex;align-items:center;justify-content:center;font-size:28px;border-top:4px solid #14122e;border-bottom:4px solid #14122e}
+#clock.ot{color:#ffd23a}
+#pauseBtn{position:absolute;top:calc(8px + env(safe-area-inset-top));left:calc(10px + env(safe-area-inset-left));width:48px;height:48px;border-radius:14px;border:4px solid #14122e;background:linear-gradient(#aab,#667);color:#fff;font:inherit;font-size:22px;pointer-events:auto;box-shadow:0 4px 0 #334}
+#banner{position:absolute;left:0;right:0;top:34%;text-align:center;font-size:84px;color:#fff;opacity:0;pointer-events:none;letter-spacing:2px}
+#banner.show{animation:pop .9s ease-out forwards}
+#banner.long{animation:popLong 2s ease-out forwards}
+@keyframes pop{0%{transform:scale(.3);opacity:0}25%{transform:scale(1.25);opacity:1}45%{transform:scale(1)}85%{opacity:1}100%{transform:scale(1.1);opacity:0}}
+@keyframes popLong{0%{transform:scale(.3) rotate(-6deg);opacity:0}15%{transform:scale(1.3) rotate(2deg);opacity:1}30%{transform:scale(1) rotate(0)}85%{opacity:1}100%{transform:scale(1);opacity:0}}
+#joy{position:absolute;width:120px;height:120px;margin:-60px 0 0 -60px;border-radius:50%;background:rgba(255,255,255,.18);border:4px solid rgba(255,255,255,.55);display:none}
+#joy i{position:absolute;left:50%;top:50%;width:56px;height:56px;margin:-28px 0 0 -28px;border-radius:50%;background:rgba(255,255,255,.75);border:4px solid #14122e}
+#joyHint{position:absolute;left:calc(40px + env(safe-area-inset-left));bottom:calc(36px + env(safe-area-inset-bottom));width:110px;height:110px;border-radius:50%;border:4px dashed rgba(255,255,255,.35);display:flex;align-items:center;justify-content:center;font-size:14px;color:rgba(255,255,255,.6);text-align:center}
+.act{position:absolute;border-radius:50%;border:5px solid #14122e;color:#fff;font:inherit;pointer-events:auto;touch-action:none;display:flex;align-items:center;justify-content:center;flex-direction:column;overflow:hidden}
+#bShoot{right:calc(26px + env(safe-area-inset-right));bottom:calc(26px + env(safe-area-inset-bottom));width:110px;height:110px;font-size:20px;background:radial-gradient(circle at 35% 30%,#ffe86b,#ff9d00);box-shadow:0 6px 0 #8a5a00}
+#bShoot span{font-size:42px;line-height:1}
+#bDash{right:calc(150px + env(safe-area-inset-right));bottom:calc(30px + env(safe-area-inset-bottom));width:78px;height:78px;font-size:15px;background:radial-gradient(circle at 35% 30%,#7be0ff,#1f77e6);box-shadow:0 5px 0 #0b3f8f}
+#bDash span{font-size:30px;line-height:1}
+#bDash::after{content:"";position:absolute;inset:0;background:conic-gradient(rgba(0,0,0,.55) calc(var(--cd,0)*1turn),transparent 0);}
+.act.press{transform:scale(.92);filter:brightness(1.2)}
+
+/* Menu */
+#menu{position:fixed;inset:0;z-index:20;display:flex;flex-direction:column;padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);background:linear-gradient(rgba(10,8,50,.6),transparent 28%,transparent 62%,rgba(10,8,50,.75))}
+#menu.solid{background:linear-gradient(#2b1d8f,#1b1464)}
+.topbar{display:flex;gap:8px;align-items:center;padding:8px 12px}
+.logo{font-size:26px;color:#ffd23a;margin-right:auto;line-height:1}
+.logo small{display:block;font-size:12px;color:#fff;opacity:.85}
+.pill{background:rgba(10,8,50,.75);border:3px solid #14122e;border-radius:20px;padding:4px 14px;font-size:20px;display:flex;gap:6px;align-items:center;white-space:nowrap}
+.content{flex:1;min-height:0;position:relative}
+.tab{position:absolute;inset:0;padding:6px 14px;overflow:auto;-webkit-overflow-scrolling:touch;touch-action:pan-y}
+#tabHome{display:flex;align-items:stretch;justify-content:space-between;gap:12px;overflow:hidden}
+.col{display:flex;flex-direction:column;gap:10px;justify-content:center}
+.card{background:rgba(20,16,70,.82);border:4px solid #14122e;border-radius:18px;padding:10px 12px;box-shadow:0 5px 0 rgba(0,0,0,.35)}
+.shoeCard{width:230px;text-align:center}
+.shoeCard img{width:140px;height:140px;object-fit:contain;filter:drop-shadow(0 8px 6px rgba(0,0,0,.4))}
+.rar{display:inline-block;padding:1px 10px;border-radius:10px;font-size:14px;border:2px solid #14122e;color:#fff;text-shadow:0 1px 0 #000}
+.sb{display:flex;align-items:center;gap:6px;font-size:13px;margin:3px 0}
+.sb span{width:62px;text-align:left}.sb em{width:30px;font-style:normal;text-align:right}
+.sb i{flex:1;height:10px;background:#0b0a2a;border-radius:6px;overflow:hidden;border:2px solid #14122e}
+.sb b{display:block;height:100%}
+.openRow{display:flex;gap:6px;flex-wrap:wrap;justify-content:center;max-width:240px}
+.nav{display:flex;gap:6px;padding:6px 10px 10px}
+.nav button{flex:1;font:inherit;font-size:18px;color:#fff;background:linear-gradient(#4a3bd0,#2b1d8f);border:4px solid #14122e;border-radius:14px;padding:8px 4px;box-shadow:0 5px 0 #120c55}
+.nav button.on{background:linear-gradient(#ffe14d,#ffb300);box-shadow:0 5px 0 #8a5a00;text-shadow:0 2px 0 #14122e}
+.boxes{display:flex;gap:12px;flex-wrap:wrap;justify-content:center;align-items:stretch}
+.boxCard{width:210px;text-align:center;display:flex;flex-direction:column;align-items:center;gap:6px}
+.boxCard .em{font-size:68px;line-height:1.1;filter:drop-shadow(0 5px 3px rgba(0,0,0,.4))}
+.boxCard small{font-size:12px;line-height:1.35;opacity:.92;font-family:Arial,sans-serif;font-weight:bold}
+h3{margin:4px 0 8px;font-size:22px;font-weight:normal}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(112px,1fr));gap:10px;padding-bottom:10px}
+.tile{position:relative;background:rgba(10,8,50,.6);border:4px solid var(--rc);border-radius:14px;padding:6px 4px;text-align:center;font-size:13px;cursor:pointer;box-shadow:0 4px 0 rgba(0,0,0,.35)}
+.tile img{width:84px;height:84px;object-fit:contain}
+.tile.locked img{filter:brightness(0) opacity(.45)}
+.tile.locked{opacity:.65}
+.tile .lv{position:absolute;top:2px;left:4px;font-size:12px;background:#14122e;border-radius:8px;padding:0 6px}
+.tile .eq{position:absolute;top:2px;right:4px;font-size:14px}
+.tile .cp{position:absolute;bottom:2px;right:5px;font-size:11px;color:#ffe14d}
+.ov{position:fixed;inset:0;z-index:40;display:flex;align-items:center;justify-content:center;background:rgba(5,4,30,.8);padding:12px}
+.modal{max-width:420px;width:100%;text-align:center;max-height:100%;overflow:auto}
+.modal img{width:150px;height:150px;object-fit:contain;filter:drop-shadow(0 8px 6px rgba(0,0,0,.4))}
+#boxov{z-index:50;background:radial-gradient(circle,var(--glow,#3b2bb0) 0,#07051f 70%);flex-direction:column;gap:14px}
+#chest{font-size:150px;line-height:1;cursor:pointer;filter:drop-shadow(0 12px 8px rgba(0,0,0,.5));animation:bob 1.4s ease-in-out infinite}
+#chest.shake{animation:shake .12s linear infinite}
+@keyframes bob{50%{transform:translateY(-12px) rotate(2deg)}}
+@keyframes shake{0%{transform:translate(0,0) rotate(0)}25%{transform:translate(-10px,2px) rotate(-8deg)}50%{transform:translate(8px,-4px) rotate(7deg)}75%{transform:translate(-6px,3px) rotate(-5deg)}100%{transform:translate(0,0)}}
+#flash{position:fixed;inset:0;background:#fff;opacity:0;pointer-events:none;z-index:60}
+#flash.go{animation:fl .6s ease-out}
+@keyframes fl{0%{opacity:1}100%{opacity:0}}
+#reveal{animation:rv .6s cubic-bezier(.2,1.6,.4,1)}
+@keyframes rv{0%{transform:scale(.2) rotate(-12deg);opacity:0}100%{transform:scale(1)}}
+#reveal .card{width:min(86vw,340px);padding:14px}
+#reveal img{width:170px;height:170px;object-fit:contain;filter:drop-shadow(0 0 18px var(--rc))}
+#rot{position:fixed;inset:0;z-index:70;background:#1b1464;display:flex;flex-direction:column;align-items:center;justify-content:center;font-size:28px;text-align:center;gap:14px;padding:20px}
+#rot .ph{font-size:80px;animation:rotp 2s ease-in-out infinite}
+@keyframes rotp{0%,30%{transform:rotate(0)}70%,100%{transform:rotate(-90deg)}}
+#toast{position:fixed;left:50%;top:70px;transform:translateX(-50%);z-index:80;background:#14122e;border:3px solid #ffd23a;border-radius:14px;padding:8px 18px;font-size:20px;opacity:0;pointer-events:none;transition:opacity .25s;white-space:nowrap}
+#toast.on{opacity:1}
+.res{display:flex;gap:10px;justify-content:center;margin:10px 0;font-size:24px;flex-wrap:wrap}
+.res div{background:#0b0a2a;border:3px solid #14122e;border-radius:14px;padding:4px 14px}
+#loading{position:fixed;inset:0;z-index:100;background:#1b1464;display:flex;align-items:center;justify-content:center;font-size:30px}
+#rUI{position:fixed;inset:0;z-index:9;pointer-events:none}
+#rUI .bar{position:absolute;left:0;right:0;height:11%;background:#000}
+#rUI .top{top:0}#rUI .bot{bottom:0}
+#rlabel{position:absolute;left:50%;top:13%;transform:translateX(-50%);font-size:30px;color:#ffd23a;animation:blink 1s steps(2) infinite;white-space:nowrap}
+@keyframes blink{50%{opacity:.35}}
+#rprog{position:absolute;left:0;bottom:11%;height:5px;background:#ffd23a;width:0}
+#rSkip{position:absolute;right:calc(14px + env(safe-area-inset-right));bottom:calc(11% + 10px);pointer-events:auto;z-index:2}
+#hud.replay #bShoot,#hud.replay #bDash,#hud.replay #joyHint,#hud.replay #joy,#hud.replay #banner{display:none}
+.fgrid{display:flex;gap:10px;flex-wrap:wrap}.fgrid .card{flex:1;min-width:230px}
+.frow{display:flex;gap:8px;align-items:center;margin-top:6px}
+.frow input{flex:1;min-width:0;font:inherit;font-size:20px;color:#fff;background:#0b0a2a;border:3px solid #14122e;border-radius:10px;padding:6px 10px;-webkit-user-select:text;user-select:text}
+.friend{padding:6px 0;border-top:2px solid rgba(255,255,255,.1)}
+.teams{display:flex;gap:10px;flex-wrap:wrap}.team{flex:1;min-width:220px;display:flex;flex-direction:column;gap:6px}
+.slot{background:#0b0a2a;border:3px solid #14122e;border-radius:10px;padding:6px 10px;font-size:18px;opacity:.6}.slot.full{opacity:1;background:#2a2470}
+@media (max-height:420px){
+ .btn.big{font-size:30px;padding:10px 30px}.shoeCard{width:190px;padding:6px}.shoeCard img{width:90px;height:90px}
+ #banner{font-size:64px}.boxCard .em{font-size:50px}.boxCard{width:190px}.topbar{padding:4px 12px}.logo{font-size:20px}
+ #bShoot{width:96px;height:96px}#bDash{width:70px;height:70px;right:calc(136px + env(safe-area-inset-right))}
+}
+@media (max-height:420px){#reveal img{width:100px;height:100px}#reveal .card{padding:8px}#reveal .card>div:first-child{font-size:22px!important}.modal img{width:100px;height:100px}}
+@media (orientation:portrait){#tabHome{flex-direction:column-reverse;align-items:center;overflow:auto}}
+</style>
+</head>
+<body>
+<div id="loading" class="stroke">Chargement…</div>
+<canvas id="c"></canvas>
+<div id="touch"></div>
+
+<div id="hud" class="hidden">
+  <button id="pauseBtn">❚❚</button>
+  <div id="score"><div class="tm blue stroke"><b id="sB">0</b></div><div id="clock" class="stroke">2:00</div><div class="tm red stroke"><b id="sR">0</b></div></div>
+  <div id="banner" class="stroke"></div>
+  <div id="joy"><i></i></div>
+  <div id="joyHint">Glisse<br>pour bouger</div>
+  <button id="bDash" class="act"><span>⚡</span>TURBO</button>
+  <button id="bShoot" class="act"><span>⚽</span>TIR</button>
+</div>
+
+<div id="menu">
+  <div class="topbar">
+    <div class="logo stroke">KICK BRAWL 3D<small id="rec"></small></div>
+    <div class="pill">🪙 <span id="cCoins">0</span></div>
+    <div class="pill">💎 <span id="cGems">0</span></div>
+  </div>
+  <div class="content">
+    <section class="tab" id="tabHome">
+      <div class="col">
+        <div class="card shoeCard" id="homeShoe"></div>
+      </div>
+      <div class="col" style="align-items:center">
+        <button class="btn big green" id="playBtn">JOUER</button>
+        <div style="font-size:14px;opacity:.9;text-align:center;text-shadow:0 2px 0 #000">Match 3 contre 3 · 2 minutes</div>
+        <button class="btn blue" id="dailyBtn">🎁 Cadeau du jour</button>
+        <div class="openRow" id="openRow"></div>
+      </div>
+    </section>
+    <section class="tab hidden" id="tabShop"></section>
+    <section class="tab hidden" id="tabShoes"></section>
+    <section class="tab hidden" id="tabFriends"></section>
+  </div>
+  <div class="nav">
+    <button data-tab="Home" class="on">🏠 Accueil</button>
+    <button data-tab="Shop">🛒 Boutique</button>
+    <button data-tab="Shoes">👟 Chaussures</button>
+    <button data-tab="Friends">👥 Amis</button>
+  </div>
+</div>
+
+<div id="detail" class="ov hidden"></div>
+<div id="lobby" class="ov hidden" style="z-index:35;background:linear-gradient(#2b1d8f,#1b1464);flex-direction:column;align-items:stretch;justify-content:flex-start;padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left)"></div>
+<div id="inviteov" class="ov hidden" style="z-index:90"></div>
+<div id="rUI" class="hidden"><div class="bar top"></div><div class="bar bot"></div><div id="rlabel" class="stroke">⏪ RALENTI</div><div id="rprog"></div><button id="rSkip" class="btn small">Ignorer ⏭</button></div>
+<div id="boxov" class="ov hidden"><div id="chest">🎁</div><div id="chestTxt" class="stroke" style="font-size:26px">Touche le coffre !</div><div id="reveal" class="hidden"></div></div>
+<div id="flash"></div>
+<div id="pauseov" class="ov hidden" style="z-index:45"><div class="card modal"><h3 class="stroke" style="font-size:40px">PAUSE</h3><div style="display:flex;flex-direction:column;gap:12px;align-items:center"><button class="btn green big" id="resumeBtn" style="font-size:30px">Reprendre</button><button class="btn red" id="quitBtn">Quitter le match</button></div></div></div>
+<div id="endov" class="ov hidden" style="z-index:46"></div>
+<div id="rot" class="hidden"><div class="ph">📱</div><div class="stroke">Tourne ton iPhone<br>en mode paysage</div></div>
+<div id="toast"></div>
+
+<script src="three.min.js"></script>
+<script src="firebase-config.js"></script>
+<script src="net.js"></script>
+<script src="game.js"></script>
+<script src="online.js"></script>
+</body>
+</html>
