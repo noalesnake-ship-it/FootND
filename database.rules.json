@@ -4,34 +4,64 @@
     ".write": false,
     "users": {
       ".read": "auth != null",
-      "$uid": { ".write": "auth != null && auth.uid === $uid" }
+      "$uid": {
+        ".write": "auth != null && auth.uid === $uid"
+      }
     },
     "codes": {
       ".read": "auth != null",
-      "$code": { ".write": "auth != null && (!data.exists() || data.val() === auth.uid)" }
+      "$code": {
+        ".write": "auth != null && (!data.exists() || data.val() === auth.uid)"
+      }
     },
     "friends": {
       "$uid": {
         ".read": "auth != null && auth.uid === $uid",
-        "$fid": { ".write": "auth != null && (auth.uid === $uid || auth.uid === $fid)" }
+        "$fid": {
+          ".write": "auth != null && (auth.uid === $uid || auth.uid === $fid)"
+        }
       }
     },
     "presence": {
       ".read": "auth != null",
-      "$uid": { ".write": "auth != null && auth.uid === $uid" }
+      "$uid": {
+        ".write": "auth != null && auth.uid === $uid"
+      }
     },
     "invites": {
       "$uid": {
         ".read": "auth != null && auth.uid === $uid",
-        "$from": { ".write": "auth != null && (auth.uid === $uid || auth.uid === $from)" }
+        "$from": {
+          ".write": "auth != null && (auth.uid === $uid || auth.uid === $from)"
+        }
       }
     },
     "rooms": {
       ".read": "auth != null",
       "$code": {
         ".write": "auth != null && (!data.exists() || data.child('host').val() === auth.uid)",
-        "m":  { "$uid": { ".write": "auth != null && auth.uid === $uid" } },
-        "in": { "$uid": { ".write": "auth != null && auth.uid === $uid" } }
+        "m": {
+          "$uid": {
+            ".write": "auth != null && auth.uid === $uid"
+          }
+        },
+        "in": {
+          "$uid": {
+            ".write": "auth != null && auth.uid === $uid"
+          }
+        }
+      }
+    },
+    "saves": {
+      "$uid": {
+        ".read": "auth != null && auth.uid === $uid",
+        ".write": "auth != null && auth.uid === $uid"
+      }
+    },
+    "names": {
+      ".read": "auth != null",
+      "$n": {
+        ".write": "auth != null && !data.exists() && newData.val() === auth.uid"
       }
     }
   }

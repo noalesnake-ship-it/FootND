@@ -35,8 +35,10 @@ const statMul=lv=>1+.08*(lv-1);
 const KEY='kickbrawl3d_v1';
 let S=null;
 try{S=JSON.parse(localStorage.getItem(KEY))}catch(e){}
-if(!S||!S.owned) S={coins:300,gems:20,owned:{classic:{lv:1,extra:0}},eq:'classic',boxes:{bronze:1,or:0,mythique:0},daily:0,w:0,l:0,d:0,g:0,name:''};
-function save(){try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}}
+const defaultSave=()=>({coins:300,gems:20,owned:{classic:{lv:1,extra:0}},eq:'classic',boxes:{bronze:1,or:0,mythique:0},daily:0,w:0,l:0,d:0,g:0,v:0});
+if(!S||!S.owned) S=defaultSave();
+let onSave=null;
+function save(){S.v=Math.max(Date.now(),(S.v||0)+1);try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}if(onSave)onSave()}
 
 /* ============ AUDIO ============ */
 let AC=null;
@@ -239,7 +241,7 @@ const inp={x:0,z:0,shoot:false,dash:false};
 function resetPositions(){
  REC.length=0;
  players.forEach(p=>{const s=p.team?1:-1;p.x=s*(p.idx===0?5:10);p.z=[0,-5.5,5.5][p.idx];p.vx=p.vz=0;p.hd=p.team?Math.PI:0;p.stun=0;p.dash=0;p.kick=0;p.celeb=0;p.thinkT=0;p.ax=p.az=0});
- Object.assign(ball,{x:0,y:BR,z:0,vx:0,vy:0,vz:0});
+ Object.assign(ball,{x:0,y:BR,z:0,vx:0,vy:0,vz:0,inNet:false});
 }
 
 function tryDash(p){
@@ -355,16 +357,23 @@ function sim(dt,ctl){
   else if(ball.at>2.5){ball.at=0;const l=Math.hypot(ball.x,ball.z)||1;ball.vx=-ball.x/l*12+(Math.random()-.5)*4;ball.vz=-ball.z/l*12+(Math.random()-.5)*4;ball.vy=6;ball.x-=ball.x/l*7;ball.z-=ball.z/l*7;ball.ax=ball.x;ball.az=ball.z}
  }
  // murs / buts
- const mouth=Math.abs(ball.z)<GW&&ball.y<GH;
- if(Math.abs(ball.x)>FW-BR&&Math.abs(ball.x)<=FW&&!mouth){const s=Math.sign(ball.x);ball.x=s*(FW-BR);ball.vx=-s*Math.abs(ball.vx)*.7}
- if(Math.abs(ball.x)>FW){
-  const s=Math.sign(ball.x);
-  if(Math.abs(ball.x)>FW+3-BR){ball.x=s*(FW+3-BR);if(Math.abs(ball.vx)>3)rippleNet(s,ball.x,ball.y,ball.z,Math.abs(ball.vx)*.4);ball.vx=-ball.vx*.25}
-  if(Math.abs(ball.z)>GW-BR){ball.z=Math.sign(ball.z)*(GW-BR);ball.vz*=-.4}
-  if(ball.y>GH-BR){ball.y=GH-BR;ball.vy=-Math.abs(ball.vy)*.3}
-  if(state==='play'&&Math.abs(ball.x)>FW+.3)onGoal(s>0?0:1);
+ // murs / buts : la balle n'entre dans le filet que si elle franchit la ligne ENTRE les poteaux
+ {
+  const ax=Math.abs(ball.x),sx=Math.sign(ball.x)||1;
+  if(ball.inNet&&ax<FW-BR)ball.inNet=false;
+  if(!ball.inNet&&ax>FW-BR){
+   if(Math.abs(ball.z)<GW-.3&&ball.y<GH-.3)ball.inNet=true;                 // dans le but
+   else{ball.x=sx*(FW-BR);ball.vx=-sx*Math.abs(ball.vx)*.7;                 // mur, coin ou poteau : rebond
+    if(Math.abs(ball.z)>GW-.5&&Math.abs(ball.z)<GW+.5)ball.vz*=.8}
+  }
+  if(ball.inNet&&ax>FW){
+   if(ax>FW+3-BR){ball.x=sx*(FW+3-BR);if(Math.abs(ball.vx)>3)rippleNet(sx,ball.x,ball.y,ball.z,Math.abs(ball.vx)*.4);ball.vx=-ball.vx*.25}
+   if(Math.abs(ball.z)>GW-BR){ball.z=Math.sign(ball.z)*(GW-BR);ball.vz*=-.4}
+   if(ball.y>GH-BR){ball.y=GH-BR;ball.vy=-Math.abs(ball.vy)*.3}
+   if(state==='play'&&ax>FW+.3)onGoal(sx>0?0:1);
+  }
+  if(!ball.inNet&&Math.abs(ball.z)>FH-BR){const s=Math.sign(ball.z);ball.z=s*(FH-BR);ball.vz=-s*Math.abs(ball.vz)*.7}
  }
- if(Math.abs(ball.z)>FH-BR&&Math.abs(ball.x)<=FW){const s=Math.sign(ball.z);ball.z=s*(FH-BR);ball.vz=-s*Math.abs(ball.vz)*.7}
 }
 
 /* ============ FLUX DU MATCH ============ */

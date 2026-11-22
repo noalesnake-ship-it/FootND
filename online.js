@@ -9,8 +9,9 @@ const ALPH='ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 const rcode=n=>Array.from({length:n},()=>ALPH[Math.random()*ALPH.length|0]).join('');
 const r1=v=>Math.round(v*10)/10,r2=v=>Math.round(v*100)/100;
 
-let NET=null,SOCP=null,ROOM=null;
+let NET=null,SOCP=null,ROOM=null,SESSION=false;
 const SOC={err:'',name:'',code:'',friends:{},users:{},pres:{},subs:{},ready:false};
+const PSEUDO_RE=/^[A-Za-z0-9_-]{3,14}$/;
 
 function ensureSoc(){
  if(SOCP)return SOCP;
@@ -18,64 +19,140 @@ function ensureSoc(){
   const cfg=window.KB_FIREBASE;
   NET=(cfg&&cfg.apiKey&&cfg.databaseURL)?makeFirebaseNet(cfg):makeLocalNet();
   await NET.ready;
-  const uid=NET.uid;
-  const u=await NET.once('users/'+uid);
-  let code=u&&u.code;
-  if(!code){for(let i=0;i<8;i++){const c=rcode(6);if(!(await NET.once('codes/'+c))){await NET.set('codes/'+c,uid);code=c;break}}}
-  if(!S.name)S.name=(u&&u.n)||('Joueur'+(Math.random()*900+100|0));
-  SOC.name=S.name;SOC.code=code;save();
-  pushProfile();
-  NET.onConnect(()=>{NET.set('presence/'+uid,{n:SOC.name,room:ROOM?ROOM.code:null});NET.onDisc('presence/'+uid)});
-  NET.on('friends/'+uid,f=>{
-   SOC.friends=f||{};
-   for(const fid of Object.keys(SOC.friends)){if(SOC.subs[fid])continue;
-    SOC.subs[fid]=[NET.on('users/'+fid,v=>{SOC.users[fid]=v;renderFriends()}),NET.on('presence/'+fid,v=>{SOC.pres[fid]=v;renderFriends();if(ROOM)renderLobby()})]}
-   for(const fid of Object.keys(SOC.subs))if(!SOC.friends[fid]){SOC.subs[fid].forEach(x=>x());delete SOC.subs[fid];delete SOC.users[fid];delete SOC.pres[fid]}
-   renderFriends();
-  });
-  NET.on('invites/'+uid,inv=>{if(!inv)return;for(const [from,v] of Object.entries(inv)){if(Date.now()-v.t>180000){NET.remove(`invites/${uid}/${from}`);continue}showInvite(from,v)}});
-  SOC.ready=true;SOC.err='';renderFriends();
+  SOC.err='';
+  if(NET.uid)await startSession();
+  renderFriends();
  })().catch(e=>{SOC.err=String(e&&e.message||e);SOCP=null;renderFriends();throw e});
  return SOCP;
 }
-function pushProfile(){if(!NET)return;NET.update('users/'+NET.uid,{n:SOC.name,code:SOC.code,shoe:S.eq,lv:S.owned[S.eq].lv});NET.update('presence/'+NET.uid,{n:SOC.name})}
+const authMsg=e=>{
+ const c=(e&&e.code)||'';
+ if(c==='auth/email-already-in-use')return 'Ce pseudo est déjà pris';
+ if(['auth/wrong-password','auth/invalid-credential','auth/user-not-found','auth/invalid-login-credentials'].includes(c))return 'Pseudo ou mot de passe incorrect';
+ if(c==='auth/weak-password')return 'Mot de passe trop court (6 caractères minimum)';
+ if(c==='auth/operation-not-allowed')return "Dans Firebase > Authentication, active « E-mail/Mot de passe »";
+ if(c==='auth/network-request-failed')return 'Pas de connexion internet';
+ if(c==='auth/too-many-requests')return 'Trop d\'essais, réessaie dans quelques minutes';
+ return String(e&&e.message||c||'Erreur');
+};
+/* fusion d'une sauvegarde locale (sans compte) avec celle du compte */
+function reconcile(local,cloud,uid){
+ if(!cloud)return (local.acct&&local.acct!==uid)?defaultSave():local;
+ if(local.acct===uid)return (cloud.v||0)>=(local.v||0)?cloud:local;
+ if(local.acct&&local.acct!==uid)return cloud;
+ const m=JSON.parse(JSON.stringify(cloud));
+ for(const [id,o] of Object.entries(local.owned||{})){const c=m.owned[id];if(!c)m.owned[id]=o;else{c.lv=Math.max(c.lv,o.lv);c.extra=Math.max(c.extra,o.extra)}}
+ m.coins=Math.max(m.coins,local.coins);m.gems=Math.max(m.gems,local.gems);
+ for(const k of Object.keys(local.boxes||{}))m.boxes[k]=Math.max(m.boxes[k]||0,local.boxes[k]);
+ ['w','l','d','g'].forEach(k=>m[k]=Math.max(m[k]||0,local[k]||0));
+ m.v=Math.max(Date.now(),(cloud.v||0)+1);return m;
+}
+let cloudT=null;
+async function startSession(){
+ if(SESSION)return;SESSION=true;
+ const uid=NET.uid;SOC.name=NET.pseudo||'Joueur';
+ // 1) progression : synchronisée avec le compte (même chaussures sur téléphone et tablette)
+ let cloud=null;try{const raw=await NET.once('saves/'+uid);if(raw)cloud=JSON.parse(raw)}catch(e){}
+ S=reconcile(S,cloud,uid);S.acct=uid;
+ onSave=()=>{if(!NET||!NET.uid||S.acct!==NET.uid)return;clearTimeout(cloudT);cloudT=setTimeout(()=>{NET.set('saves/'+NET.uid,JSON.stringify(S)).catch(()=>{})},1500)};
+ save();applyStats();renderAll();
+ NET.on('saves/'+uid,raw=>{
+  if(!raw||inMatch)return;let o;try{o=JSON.parse(raw)}catch(e){return}
+  if((o.v||0)>(S.v||0)){S=o;try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}applyStats();renderAll();toast('☁ Progression synchronisée')}
+ });
+ // 2) profil public + code ami
+ const u=await NET.once('users/'+uid);
+ let code=u&&u.code;
+ if(!code){for(let i=0;i<8;i++){const c=rcode(6);if(!(await NET.once('codes/'+c))){await NET.set('codes/'+c,uid);code=c;break}}}
+ SOC.code=code;
+ pushProfile();
+ NET.onConnect(()=>{NET.set('presence/'+uid,{n:SOC.name,room:ROOM?ROOM.code:null});NET.onDisc('presence/'+uid)});
+ NET.on('friends/'+uid,f=>{
+  SOC.friends=f||{};
+  for(const fid of Object.keys(SOC.friends)){if(SOC.subs[fid])continue;
+   SOC.subs[fid]=[NET.on('users/'+fid,v=>{SOC.users[fid]=v;renderFriends()}),NET.on('presence/'+fid,v=>{SOC.pres[fid]=v;renderFriends();if(ROOM)renderLobby()})]}
+  for(const fid of Object.keys(SOC.subs))if(!SOC.friends[fid]){SOC.subs[fid].forEach(x=>x());delete SOC.subs[fid];delete SOC.users[fid];delete SOC.pres[fid]}
+  renderFriends();
+ });
+ NET.on('invites/'+uid,inv=>{if(!inv)return;for(const [from,v] of Object.entries(inv)){if(Date.now()-v.t>180000){NET.remove(`invites/${uid}/${from}`);continue}showInvite(from,v)}});
+ SOC.ready=true;renderFriends();
+}
+function pushProfile(){if(!NET||!NET.uid)return;NET.update('users/'+NET.uid,{n:SOC.name,code:SOC.code,shoe:S.eq,lv:S.owned[S.eq].lv});NET.update('presence/'+NET.uid,{n:SOC.name})}
+async function doAuth(mode,pseudo,pw,pw2){
+ pseudo=(pseudo||'').trim();
+ if(!PSEUDO_RE.test(pseudo))throw{message:'Pseudo : 3 à 14 caractères (lettres, chiffres, _ ou -)'};
+ if(pw.length<6)throw{message:'Mot de passe trop court (6 caractères minimum)'};
+ if(mode==='sign'){
+  if(pw!==pw2)throw{message:'Les deux mots de passe sont différents'};
+  await NET.signup(pseudo,pw);
+  await NET.set('names/'+pseudo.toLowerCase(),NET.uid);
+ }else await NET.login(pseudo,pw);
+ SESSION=false;await startSession();
+ toast(mode==='sign'?'Compte créé !':'Connecté !');sfx('open');
+}
 
 /* ---------- amis ---------- */
-let friendsBuilt=false;
+let friendsBuilt=false,authMode='login';
 function renderFriends(){
  const t=$('#tabFriends');if(!t)return;
  if(!friendsBuilt){
   friendsBuilt=true;
-  t.innerHTML=`<h3 class="stroke" style="text-align:center">AMIS & SALONS</h3>
+  t.innerHTML=`<h3 class="stroke" style="text-align:center">COMPTE, AMIS & SALONS</h3>
   <div id="fStatus" style="text-align:center;font-size:13px;font-family:Arial,sans-serif;font-weight:bold;margin-bottom:8px"></div>
+  <div id="fAuth" class="card hidden" style="max-width:420px;margin:0 auto">
+   <div style="display:flex;gap:8px;margin-bottom:6px"><button class="btn small blue" id="aTabLogin">Connexion</button><button class="btn small grey" id="aTabSign">Inscription</button></div>
+   <div style="font-size:13px;font-family:Arial,sans-serif;opacity:.9">Un compte garde ta progression (chaussures, pièces) sur tous tes appareils et te permet de jouer avec tes amis.</div>
+   <div class="frow"><input id="aName" maxlength="14" placeholder="Pseudo (3 à 14 caractères)" autocapitalize="off" autocorrect="off" autocomplete="username"></div>
+   <div class="frow"><input id="aPw" type="password" placeholder="Mot de passe (6 minimum)" autocomplete="current-password"></div>
+   <div class="frow hidden" id="aPw2row"><input id="aPw2" type="password" placeholder="Confirme le mot de passe" autocomplete="new-password"></div>
+   <div class="frow"><button class="btn green" id="aGo" style="flex:1">Se connecter</button></div>
+   <div id="aErr" style="color:#ff9a9a;font-size:14px;font-family:Arial,sans-serif;font-weight:bold;margin-top:6px;min-height:18px"></div>
+  </div>
+  <div id="fMain" class="hidden">
   <div class="fgrid">
-   <div class="card"><div style="font-size:16px">Ton profil</div>
-    <div class="frow"><input id="fName" maxlength="14" placeholder="Pseudo"><button class="btn small green" id="fNameOk">OK</button></div>
-    <div style="font-size:14px;margin-top:6px">Ton code ami : <b id="fCode" style="font-size:22px;letter-spacing:3px;color:#ffd23a">······</b> <button class="btn small blue" id="fCopy">Copier</button></div></div>
+   <div class="card"><div style="font-size:16px">Mon compte</div>
+    <div style="font-size:22px;color:#ffd23a" id="fMe"></div>
+    <div style="font-size:14px;margin-top:6px">Mon code ami : <b id="fCode" style="font-size:22px;letter-spacing:3px">······</b> <button class="btn small blue" id="fCopy">Copier</button></div>
+    <div class="frow"><button class="btn small grey" id="fLogout">Déconnexion</button></div></div>
    <div class="card"><div style="font-size:16px">Ajouter un ami</div>
-    <div class="frow"><input id="fAdd" maxlength="6" placeholder="Code ami" style="text-transform:uppercase"><button class="btn small green" id="fAddOk">Ajouter</button></div></div>
+    <div style="font-size:12px;font-family:Arial,sans-serif;opacity:.85">Entre son pseudo ou son code ami</div>
+    <div class="frow"><input id="fAdd" maxlength="14" placeholder="Pseudo ou code" autocapitalize="off" autocorrect="off"><button class="btn small green" id="fAddOk">Ajouter</button></div></div>
    <div class="card"><div style="font-size:16px">Jouer en équipe</div>
     <div class="frow"><button class="btn small green" id="fCreate">Créer un salon</button></div>
     <div class="frow" style="margin-top:8px"><input id="fJoin" maxlength="5" placeholder="Code salon" style="text-transform:uppercase"><button class="btn small blue" id="fJoinOk">Rejoindre</button></div></div>
   </div>
-  <div class="card" style="margin-top:10px"><div style="font-size:18px;margin-bottom:6px">Mes amis</div><div id="fList"></div></div>`;
-  const need=async fn=>{try{await ensureSoc();await fn()}catch(e){toast('Réseau indisponible')}};
-  $('#fNameOk').onclick=()=>need(()=>{const v=$('#fName').value.trim().slice(0,14);if(!v)return;S.name=SOC.name=v;save();pushProfile();toast('Pseudo enregistré')});
+  <div class="card" style="margin-top:10px"><div style="font-size:18px;margin-bottom:6px">Mes amis</div><div id="fList"></div></div>
+  </div>`;
+  const need=async fn=>{try{await ensureSoc();if(!NET.uid)return toast("Connecte-toi d'abord");await fn()}catch(e){toast(e&&e.message?e.message:'Réseau indisponible')}};
+  const setMode=m=>{authMode=m;$('#aTabLogin').className='btn small '+(m==='login'?'blue':'grey');$('#aTabSign').className='btn small '+(m==='sign'?'blue':'grey');$('#aPw2row').classList.toggle('hidden',m!=='sign');$('#aGo').textContent=m==='sign'?'Créer mon compte':'Se connecter';$('#aErr').textContent=''};
+  $('#aTabLogin').onclick=()=>setMode('login');$('#aTabSign').onclick=()=>setMode('sign');
+  $('#aGo').onclick=async()=>{
+   const b=$('#aGo');b.disabled=true;$('#aErr').textContent='';
+   try{await ensureSoc();await doAuth(authMode,$('#aName').value,$('#aPw').value,$('#aPw2').value);$('#aPw').value=$('#aPw2').value=''}
+   catch(e){$('#aErr').textContent=authMsg(e)}
+   b.disabled=false;renderFriends();
+  };
   $('#fCopy').onclick=()=>{try{navigator.clipboard.writeText(SOC.code);toast('Code copié !')}catch(e){toast('Code : '+SOC.code)}};
+  $('#fLogout').onclick=async()=>{try{await NET.logout()}catch(e){}try{localStorage.removeItem(KEY)}catch(e){}location.reload()};
   $('#fAddOk').onclick=()=>need(()=>addFriend($('#fAdd').value));
   $('#fCreate').onclick=()=>need(createRoom);
   $('#fJoinOk').onclick=()=>need(()=>joinRoom($('#fJoin').value));
  }
- const st=$('#fStatus');
+ const st=$('#fStatus'),auth=$('#fAuth'),main=$('#fMain');
+ const loggedIn=!!(NET&&NET.uid&&SOC.ready);
  if(SOC.err){st.textContent='⚠ '+SOC.err;st.style.color='#ff9a9a'}
- else if(!SOC.ready){st.textContent='Connexion…';st.style.color='#fff'}
- else if(NET.kind==='local'){st.textContent='🧪 Mode test local : ouvre le jeu dans 2 onglets du même navigateur (aucun serveur configuré)';st.style.color='#ffd23a'}
+ else if(!NET){st.textContent='Connexion au serveur…';st.style.color='#fff'}
+ else if(NET.kind==='local'){st.textContent='🧪 Mode test local : aucun serveur Firebase configuré. Les comptes et amis ne sont partagés qu\'entre onglets de CE navigateur, pas entre appareils.';st.style.color='#ffd23a'}
+ else if(!NET.uid){st.textContent='Connecte-toi ou crée un compte';st.style.color='#fff'}
  else{st.textContent='🟢 Connecté';st.style.color='#7dff5a'}
+ auth.classList.toggle('hidden',!(NET&&!NET.uid));
+ main.classList.toggle('hidden',!loggedIn);
+ if(!loggedIn)return;
+ $('#fMe').textContent=SOC.name;
  $('#fCode').textContent=SOC.code||'······';
- const ni=$('#fName');if(document.activeElement!==ni&&SOC.ready)ni.value=SOC.name;
  const L=$('#fList');if(!L)return;
  const ids=Object.keys(SOC.friends||{});
- if(!ids.length){L.innerHTML='<div style="opacity:.7;font-size:14px;font-family:Arial,sans-serif">Aucun ami pour l\'instant. Échange ton code avec un ami !</div>';return}
+ if(!ids.length){L.innerHTML='<div style="opacity:.7;font-size:14px;font-family:Arial,sans-serif">Aucun ami pour l\'instant. Ajoute-en un avec son pseudo !</div>';return}
  L.innerHTML='';
  ids.sort((a,b)=>(SOC.pres[b]?1:0)-(SOC.pres[a]?1:0)).forEach(fid=>{
   const u=SOC.users[fid]||{},p=SOC.pres[fid];
@@ -88,11 +165,13 @@ function renderFriends(){
   L.appendChild(row);
  });
 }
-async function addFriend(code){
- code=(code||'').trim().toUpperCase();if(code.length<4)return toast('Entre le code de ton ami');
- const fid=await NET.once('codes/'+code);
- if(!fid)return toast('Code inconnu');
- if(fid===NET.uid)return toast("C'est ton propre code !");
+async function addFriend(q){
+ q=(q||'').trim();if(q.length<3)return toast('Entre le pseudo ou le code de ton ami');
+ if(!/^[A-Za-z0-9_-]+$/.test(q))return toast('Pseudo ou code invalide');
+ let fid=await NET.once('names/'+q.toLowerCase());
+ if(!fid)fid=await NET.once('codes/'+q.toUpperCase());
+ if(!fid)return toast('Aucun joueur trouvé avec « '+q+' »');
+ if(fid===NET.uid)return toast("C'est toi !");
  await NET.set(`friends/${NET.uid}/${fid}`,true);await NET.set(`friends/${fid}/${NET.uid}`,true);
  $('#fAdd').value='';toast('Ami ajouté !');sfx('open');
 }
@@ -115,6 +194,7 @@ function roster(m){
 }
 function myMember(){return {n:SOC.name,team:0,ts:Date.now(),shoe:S.eq,lv:S.owned[S.eq].lv}}
 async function createRoom(){
+ if(!NET.uid)return toast("Connecte-toi d'abord");
  if(ROOM)return showLobby();
  let code;for(let i=0;i<8;i++){const c=rcode(5);if(!(await NET.once('rooms/'+c))){code=c;break}}
  if(!code)return toast('Erreur de création');
@@ -125,6 +205,7 @@ async function createRoom(){
 }
 async function joinRoom(code){
  try{await ensureSoc()}catch(e){return toast('Réseau indisponible')}
+ if(!NET.uid)return toast("Connecte-toi d'abord");
  code=(code||'').trim().toUpperCase();if(!code)return toast('Entre un code de salon');
  if(ROOM&&ROOM.code===code)return showLobby();
  const r=await NET.once('rooms/'+code);
