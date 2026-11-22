@@ -379,7 +379,8 @@ function sim(dt,ctl){
 /* ============ FLUX DU MATCH ============ */
 const banner=$('#banner');
 const ST=['menu','countdown','play','goal','end'];
-const GOAL_T=7;           // durée de la phase but (célébration + ralenti)
+const BLAST_T=2.8;        // onde de choc + ragdoll en 1re personne
+const GOAL_T=8.7;         // durée totale de la phase but (ragdoll + ralenti)
 const REC=[],REC_N=75,RP={active:false,done:false,t:0,sp:.5,bx:0,by:0,bz:0,px:null};let recAcc=0;
 function showBanner(txt,cls,col){banner.textContent=txt;banner.style.color=col||'#fff';banner.className='stroke';void banner.offsetWidth;banner.className='stroke '+(cls||'show')}
 function fmt(t){t=Math.max(0,Math.ceil(t));return Math.floor(t/60)+':'+String(t%60).padStart(2,'0')}
@@ -399,6 +400,7 @@ function onGoalFX(team){
  sfx('goal');confetti(team);shake=1;
  rippleNet(team===0?1:-1,ball.x,ball.y,ball.z,Math.max(8,Math.hypot(ball.vx,ball.vz)));
  players.forEach(p=>{p.celeb=p.team===team?1:0});
+ startRagdoll(team);
 }
 function onGoal(team){
  score[team]++;state='goal';stateT=0;updHUD();RP.done=false;
@@ -428,7 +430,7 @@ function showResult(){
 }
 function toMenu(){
  state='menu';inMatch=false;paused=false;$('#hud').classList.add('hidden');$('#pauseov').classList.add('hidden');$('#rot').classList.add('hidden');
- stopReplay();RP.done=false;
+ stopReplay();RP.done=false;stopRagdoll();
  ONLINE=null;myTeam=0;human=players[0];players.forEach(p=>setBot(p));
  $('#menu').classList.remove('hidden');resetPositions();players.forEach(p=>{p.g.visible=p===human});ballMesh.visible=false;
  human.x=0;human.z=0;applyStats();renderAll();
@@ -492,6 +494,60 @@ function replayApply(dt){
  $('#rprog').style.width=(RP.t/(n-1)*100)+'%';
 }
 
+/* ============ ONDE DE CHOC : tous les joueurs projetés en ragdoll, caméra 1re personne ============ */
+const RG={active:false,t:0,st:[],fp:false,side:1,camQ:new THREE.Quaternion(),hasQ:false};
+const shockRing=new THREE.Mesh(new THREE.RingGeometry(.92,1,48),new THREE.MeshBasicMaterial({color:0xffffff,transparent:true,opacity:0,side:THREE.DoubleSide,depthWrite:false}));
+shockRing.rotation.x=-Math.PI/2;shockRing.visible=false;scene.add(shockRing);
+const _v=new THREE.Vector3(),_v2=new THREE.Vector3(),_q=new THREE.Quaternion(),RCP=new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0,1,0),-Math.PI/2);
+function startRagdoll(team){
+ const dirX=team===0?-1:1;                 // l'équipe 0 marque à +x : tout le monde part vers -x
+ RG.side=-dirX;RG.active=true;RG.t=0;RG.fp=true;RG.hasQ=false;
+ const g=22,T=1.25;
+ RG.st=players.map(p=>{
+  const tx=dirX*(FW-3-Math.random()*8),tz=clamp(p.z*.7+(Math.random()-.5)*8,-FH+2,FH-2);
+  const s={com:new THREE.Vector3(p.x,1,p.z),v:new THREE.Vector3((tx-p.x)/T,g*T/2,(tz-p.z)/T),
+   q:new THREE.Quaternion().setFromEuler(new THREE.Euler(0,-p.hd,0)),
+   w:new THREE.Vector3((Math.random()-.5)*14,(Math.random()-.5)*8,(Math.random()-.5)*14),fl:Math.random()*6};
+  if(s.w.length()<6)s.w.x+=8;return s;
+ });
+ human.body.visible=false;human.head.visible=false;if(human.tag)human.tag.visible=false;if(human.ring){human.ring.visible=false;human.arrow.visible=false}
+ for(let i=0;i<40;i++){const a=Math.random()*6.28;emit(RG.side*FW,1,0,Math.cos(a)*10,3+Math.random()*6,Math.sin(a)*10,0xffffff,.8,.4,14)}
+ tone(90,.8,'sawtooth',.22,.25);tone(220,.4,'square',.1,.3,.05);shake=1.2;
+}
+function stopRagdoll(){
+ if(!RG.active)return;RG.active=false;RG.fp=false;shockRing.visible=false;
+ human.body.visible=true;human.head.visible=true;if(human.tag)human.tag.visible=true;
+ for(const p of players){p.g.quaternion.identity();p.g.rotation.set(0,0,0);p.head.rotation.set(0,0,0);p.sL.rotation.set(0,0,0);p.sR.rotation.set(0,0,0)}
+}
+function ragdollStep(dt){
+ RG.t+=dt;
+ for(const s of RG.st){
+  s.v.y-=22*dt;s.com.addScaledVector(s.v,dt);
+  if(s.com.y<.55){s.com.y=.55;if(s.v.y<-2){s.v.y=-s.v.y*.38;s.v.x*=.6;s.v.z*=.6;s.w.multiplyScalar(.75)}else s.v.y=0}
+  if(s.com.y<.6){const f=Math.exp(-2.4*dt);s.v.x*=f;s.v.z*=f;s.w.multiplyScalar(Math.exp(-1.6*dt))}
+  if(Math.abs(s.com.x)>FW-.6){s.com.x=Math.sign(s.com.x)*(FW-.6);s.v.x*=-.35}
+  if(Math.abs(s.com.z)>FH-.6){s.com.z=Math.sign(s.com.z)*(FH-.6);s.v.z*=-.35}
+  const a=s.w.length()*dt;if(a>1e-5){_q.setFromAxisAngle(_v.copy(s.w).normalize(),a);s.q.premultiply(_q);s.q.normalize()}
+ }
+ const k=Math.min(1,RG.t/.9);
+ shockRing.visible=k<1;shockRing.position.set(RG.side*FW,.3,0);shockRing.scale.setScalar(1+k*34);shockRing.material.opacity=(1-k)*.8;
+}
+function poseRag(p,s,now){
+ _v.set(0,-1,0).applyQuaternion(s.q);p.g.position.copy(s.com).add(_v);p.g.quaternion.copy(s.q);
+ const f=Math.min(1,(Math.hypot(s.v.x,s.v.z)+s.w.length()*.4)/8);
+ const fl=Math.sin(now*16+s.fl)*.6*f+Math.sin(now*9+s.fl)*.2*f;
+ p.body.position.y=1;p.head.position.y=2;p.body.rotation.set(0,0,0);p.head.rotation.z=fl*.6;
+ p.sL.position.set(.1,.1+fl*.5,-.3+fl*.3);p.sR.position.set(-.1,.1-fl*.5,.3-fl*.3);p.sL.rotation.z=fl;p.sR.rotation.z=-fl;
+}
+function ragdollCam(dt){
+ const s=RG.st[players.indexOf(human)];if(!s)return;
+ _v.set(0,2,0).applyQuaternion(s.q).add(human.g.position).add(_v2.set(.4,.05,0).applyQuaternion(s.q));
+ cam.position.copy(_v);
+ _q.copy(s.q).multiply(RCP);
+ if(!RG.hasQ){RG.camQ.copy(_q);RG.hasQ=true}else RG.camQ.slerp(_q,Math.min(1,dt*7));
+ cam.quaternion.copy(RG.camQ);
+}
+
 /* ============ ANIMATIONS + CAMÉRA + RENDU ============ */
 let camX=0,camZ=0,menuT=0,rcx=0,rcz=0;
 function pose(p,x,z,hd,legT,sp,kickT,dashT,stunT,y){
@@ -510,8 +566,10 @@ function pose(p,x,z,hd,legT,sp,kickT,dashT,stunT,y){
 }
 function animate(dt){
  const now=performance.now()/1000;
+ if(RG.active)ragdollStep(dt);
  for(const p of players){
   if(!p.g.visible)continue;
+  if(RG.active){poseRag(p,RG.st[players.indexOf(p)],now);continue}
   const sp=Math.hypot(p.vx,p.vz);p.legT+=sp*dt*1.15;
   const y=p.celeb?Math.abs(Math.sin(now*9+p.rid))*.7:0;
   pose(p,p.x,p.z,p.hd,p.legT,sp,p.kick,p.dash,p.stun,y);
@@ -529,6 +587,9 @@ function animate(dt){
  if(bs>.05){const ax=new THREE.Vector3(ball.vz,0,-ball.vx).normalize();ballMesh.rotateOnWorldAxis(ax,bs/BR*dt)}
 }
 function updCam(dt){
+ const wantFov=(RG.active&&RG.fp)?82:42;
+ if(cam.fov!==wantFov){cam.fov=wantFov;cam.updateProjectionMatrix()}
+ if(RG.active&&RG.fp&&state==='goal'){ragdollCam(dt);return}
  let aspect=innerWidth/innerHeight;
  const fov=cam.fov*Math.PI/180;
  if(state==='menu'){
@@ -571,7 +632,9 @@ function loop(t){
   updNets(dt);updParts(dt);
   // ralenti : démarre après la célébration, s'arrête quand on quitte la phase but
   if(state!=='goal'&&(RP.active||RP.done)){stopReplay();RP.done=false}
-  if(state==='goal'&&!RP.active&&!RP.done&&stateT>1.4&&REC.length>15)startReplay();
+  if(RG.active&&(state!=='goal'||stateT>BLAST_T))stopRagdoll();
+  $('#hud').classList.toggle('blast',RG.active);
+  if(state==='goal'&&!RP.active&&!RP.done&&stateT>BLAST_T&&REC.length>15)startReplay();
   if(RP.active)replayApply(dt);else animate(dt);
   if(inMatch&&state==='play'){recAcc+=dt;while(recAcc>=1/30){recAcc-=1/30;recordFrame()}}
   if(ONLINE&&ONLINE.host)onlineHostTick(dt);
