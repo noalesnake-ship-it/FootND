@@ -554,6 +554,7 @@ let last=performance.now();
 function loop(t){
  requestAnimationFrame(loop);
  let dt=Math.min(.05,(t-last)/1000);last=t;
+ pollPad();
  const rot=!$('#rot').classList.contains('hidden');
  const freeze=paused||(rot&&!ONLINE);
  if(!freeze){
@@ -606,6 +607,31 @@ function kb(){if(jid!==null)return;const x=(keys.arrowright||keys.d?1:0)-(keys.a
 ['gesturestart','gesturechange','dblclick'].forEach(ev=>document.addEventListener(ev,e=>e.preventDefault()));
 document.addEventListener('touchmove',e=>{if(!e.target.closest('.tab,.modal'))e.preventDefault()},{passive:false});
 
+/* ---- manette (Gamepad API : SteelSeries Nimbus, manettes MFi/Xbox/PS) ---- */
+let padOn=false,padMoved=false,padPrev={};
+function padBtn(gp,i){const b=gp.buttons[i];return !!(b&&(b.pressed||b.value>.5))}
+function pollPad(){
+ const list=navigator.getGamepads?navigator.getGamepads():[];
+ let gp=null;for(const g of list){if(g&&g.connected){gp=g;break}}
+ if(!gp){if(padOn){padOn=false;$('#joyHint').style.display=''}return}
+ if(!padOn){padOn=true;$('#joyHint').style.display='none';toast('🎮 Manette connectée')}
+ let x=gp.axes[0]||0,z=gp.axes[1]||0;
+ if(padBtn(gp,14))x-=1;if(padBtn(gp,15))x+=1;if(padBtn(gp,12))z-=1;if(padBtn(gp,13))z+=1;
+ let m=Math.hypot(x,z);if(m<.2){x=z=0;m=0}else if(m>1){x/=m;z/=m}
+ if(m>0||padMoved){if(jid===null){inp.x=x;inp.z=z}padMoved=m>0}
+ const down={shoot:padBtn(gp,0)||padBtn(gp,5)||padBtn(gp,7),dash:padBtn(gp,2)||padBtn(gp,1)||padBtn(gp,3)||padBtn(gp,4)||padBtn(gp,6),menu:padBtn(gp,9)||padBtn(gp,8)};
+ const rise=k=>down[k]&&!padPrev[k];
+ if(inMatch){
+  if(rise('shoot'))inp.shoot=true;
+  if(rise('dash'))inp.dash=true;
+  if(rise('menu')){if(RP.active)skipReplay();else setPause(!$('#pauseov').classList.contains('hidden')?false:true)}
+ }else if(rise('shoot')){
+  const vis=id=>{const e=$(id);return e&&!e.classList.contains('hidden')};
+  if(vis('#endov'))$('#againBtn').click();
+  else if(state==='menu'&&vis('#menu')&&vis('#tabHome')&&!vis('#detail')&&!vis('#boxov')&&!vis('#lobby')&&!vis('#inviteov'))$('#playBtn').click();
+ }
+ padPrev=down;
+}
 function setPause(v){paused=v&&!ONLINE;$('#pauseov').classList.toggle('hidden',!v)}
 $('#pauseBtn').onclick=()=>{unlockAudio();setPause(true)};
 $('#resumeBtn').onclick=()=>setPause(false);
