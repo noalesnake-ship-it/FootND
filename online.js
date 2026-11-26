@@ -55,12 +55,12 @@ async function startSession(){
  const uid=NET.uid;SOC.name=NET.pseudo||'Joueur';
  // 1) progression : synchronisée avec le compte (même chaussures sur téléphone et tablette)
  let cloud=null;try{const raw=await NET.once('saves/'+uid);if(raw)cloud=JSON.parse(raw)}catch(e){}
- S=reconcile(S,cloud,uid);S.acct=uid;
+ S=fixSave(reconcile(S,cloud,uid));S.acct=uid;
  onSave=()=>{if(!NET||!NET.uid||S.acct!==NET.uid)return;clearTimeout(cloudT);cloudT=setTimeout(()=>{NET.set('saves/'+NET.uid,JSON.stringify(S)).catch(()=>{})},1500)};
  save();applyStats();renderAll();
  NET.on('saves/'+uid,raw=>{
   if(!raw||inMatch)return;let o;try{o=JSON.parse(raw)}catch(e){return}
-  if((o.v||0)>(S.v||0)){S=o;try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}applyStats();renderAll();toast('☁ Progression synchronisée')}
+  if((o.v||0)>(S.v||0)){S=fixSave(o);try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}applyStats();renderAll();toast('☁ Progression synchronisée')}
  });
  // 2) profil public + code ami
  const u=await NET.once('users/'+uid);

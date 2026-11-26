@@ -37,7 +37,8 @@ let S=null;
 try{S=JSON.parse(localStorage.getItem(KEY))}catch(e){}
 const defaultSave=()=>({coins:300,gems:20,owned:{classic:{lv:1,extra:0}},eq:'classic',boxes:{bronze:1,or:0,mythique:0},daily:0,w:0,l:0,d:0,g:0,v:0,bp:{xp:0,cl:{}},codes:{},size:3});
 if(!S||!S.owned) S=defaultSave();
-S.bp=S.bp||{xp:0,cl:{}};S.bp.cl=S.bp.cl||{};S.codes=S.codes||{};S.size=S.size||3;
+function fixSave(o){o.bp=o.bp||{xp:0,cl:{}};o.bp.cl=o.bp.cl||{};o.codes=o.codes||{};o.size=o.size||3;return o}   // complète une ancienne sauvegarde (locale ou du compte)
+fixSave(S);
 let onSave=null;
 function save(){S.v=Math.max(Date.now(),(S.v||0)+1);try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}if(onSave)onSave()}
 
