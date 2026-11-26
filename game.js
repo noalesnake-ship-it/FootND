@@ -35,8 +35,9 @@ const statMul=lv=>1+.08*(lv-1);
 const KEY='kickbrawl3d_v1';
 let S=null;
 try{S=JSON.parse(localStorage.getItem(KEY))}catch(e){}
-const defaultSave=()=>({coins:300,gems:20,owned:{classic:{lv:1,extra:0}},eq:'classic',boxes:{bronze:1,or:0,mythique:0},daily:0,w:0,l:0,d:0,g:0,v:0});
+const defaultSave=()=>({coins:300,gems:20,owned:{classic:{lv:1,extra:0}},eq:'classic',boxes:{bronze:1,or:0,mythique:0},daily:0,w:0,l:0,d:0,g:0,v:0,bp:{xp:0,cl:{}},codes:{},size:3});
 if(!S||!S.owned) S=defaultSave();
+S.bp=S.bp||{xp:0,cl:{}};S.bp.cl=S.bp.cl||{};S.codes=S.codes||{};S.size=S.size||3;
 let onSave=null;
 function save(){S.v=Math.max(Date.now(),(S.v||0)+1);try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}if(onSave)onSave()}
 
@@ -202,6 +203,8 @@ function applyShoe(p,s){
 }
 for(let t=0;t<2;t++)for(let i=0;i<3;i++)players.push(mkPlayer(t,i));
 human=players[0];
+let SIZE=3;   // joueurs par équipe (1v1, 2v2, 3v3) : les joueurs en trop sont désactivés (p.off)
+function setSize(n){SIZE=clamp(n|0,1,3);players.forEach(p=>{p.off=p.idx>=SIZE})}
 function setStats(p,id,lv){const s=SH[id]||SH.classic,m=statMul(lv||1);p.spd=8.2+s.st[0]*m*.22;p.pow=16+s.st[1]*m*1.3;p.ctl=s.st[2]*m;applyShoe(p,s)}
 function setBot(p){p.remote=false;p.uid=null;p.rin=null;p.spd=8.5;p.pow=20;p.ctl=4;if(p.shoe!==SH.classic)applyShoe(p,SH.classic);setName(p,'')}
 function applyStats(){setStats(human,S.eq,S.owned[S.eq].lv)}
@@ -267,7 +270,7 @@ function doShoot(p){
 /* IA */
 function ai(p,dt){
  const dir=p.team?-1:1,ownGX=-dir*FW,enGX=dir*FW;
- const mates=players.filter(q=>q.team===p.team);
+ const mates=players.filter(q=>q.team===p.team&&!q.off);
  let ch=mates[0],bd=1e9;for(const q of mates){const d=Math.hypot(q.x-ball.x,q.z-ball.z)+(q.stun>0?5:0);if(d<bd){bd=d;ch=q}}
  const dball=Math.hypot(p.x-ball.x,p.z-ball.z);
  const ownHalf=(ball.x-ownGX)*dir<FW*.9;
@@ -308,6 +311,7 @@ function movePlayer(p,ax,az,dt){
 /* simulation */
 function sim(dt,ctl){
  for(const p of players){
+  if(p.off)continue;
   p.shootCd-=dt;p.dashCd-=dt;p.stun-=dt;p.kick-=dt;p.dash-=dt;
   let ax=0,az=0;
   if(!ctl&&p.remote&&p.rin){p.lsn=p.rin.sn;p.ldn=p.rin.dn}
@@ -322,7 +326,7 @@ function sim(dt,ctl){
  }
  // collisions joueurs
  for(let i=0;i<players.length;i++)for(let j=i+1;j<players.length;j++){
-  const a=players[i],b=players[j];let dx=b.x-a.x,dz=b.z-a.z,d=Math.hypot(dx,dz);
+  const a=players[i],b=players[j];if(a.off||b.off)continue;let dx=b.x-a.x,dz=b.z-a.z,d=Math.hypot(dx,dz);
   if(d<PR*2&&d>.001){
    const nx=dx/d,nz=dz/d,ov=(PR*2-d)/2;a.x-=nx*ov;a.z-=nz*ov;b.x+=nx*ov;b.z+=nz*ov;
    if(a.team!==b.team){
@@ -341,6 +345,7 @@ function sim(dt,ctl){
  ball.x+=ball.vx*dt;ball.z+=ball.vz*dt;
  // joueurs <-> balle
  for(const p of players){
+  if(p.off)continue;
   const dx=ball.x-p.x,dz=ball.z-p.z,d=Math.hypot(dx,dz),R=PR+BR;
   if(d<R&&ball.y<1.7&&d>.001){
    const nx=dx/d,nz=dz/d;ball.x=p.x+nx*(R+.01);ball.z=p.z+nz*(R+.01);
@@ -389,7 +394,7 @@ function updHUD(){$('#sB').textContent=score[0];$('#sR').textContent=score[1];co
 function startMatch(){
  unlockAudio();
  $('#menu').classList.add('hidden');$('#hud').classList.remove('hidden');$('#lobby').classList.add('hidden');$('#endov').classList.add('hidden');
- players.forEach(p=>{p.g.visible=true});ballMesh.visible=true;
+ players.forEach(p=>{p.g.visible=!p.off});ballMesh.visible=true;
  score=[0,0];timeLeft=120;ot=false;otT=0;inMatch=true;resetPositions();updHUD();
  state='countdown';cdT=3.2;stateT=0;paused=false;sfx('whistle');lastCd=4;
  inp.x=inp.z=0;inp.shoot=inp.dash=false;checkRot();
@@ -415,14 +420,15 @@ function showResult(){
  if(w){coins=60+my*10;gems=3;S.w++;const r=Math.random();box=r<.08?'or':r<.75?'bronze':null}
  else if(d){coins=30;S.d++;box=Math.random()<.25?'bronze':null}
  else{coins=15+my*5;S.l++;box=Math.random()<.15?'bronze':null}
- S.g+=my;S.coins+=coins;S.gems+=gems;if(box)S.boxes[box]++;save();
+ const xp=(w?60:d?35:20)+my*10+(ONLINE?10:0),lv0=bpLevel();
+ S.g+=my;S.coins+=coins;S.gems+=gems;if(box)S.boxes[box]++;S.bp.xp=(S.bp.xp||0)+xp;const lv1=bpLevel();save();
  sfx(w?'win':'lose');
  const t=w?'VICTOIRE !':d?'ÉGALITÉ':'DÉFAITE';const col=w?'#ffd23a':d?'#fff':'#ff7a7a';
  const e=$('#endov');e.classList.remove('hidden');
  const on=!!ONLINE;
  e.innerHTML=`<div class="card modal"><h3 class="stroke" style="font-size:50px;color:${col}">${t}</h3>
  <div class="res stroke" style="font-size:44px"><span style="color:#6fc8ff">${score[0]}</span> - <span style="color:#ff7a7a">${score[1]}</span></div>
- <div class="res"><div>🪙 +${coins}</div>${gems?`<div>💎 +${gems}</div>`:''}${box?`<div>${BOXES[box].em} ${BOXES[box].n}</div>`:''}</div>
+ <div class="res"><div>🪙 +${coins}</div>${gems?`<div>💎 +${gems}</div>`:''}${box?`<div>${BOXES[box].em} ${BOXES[box].n}</div>`:''}<div>⭐ +${xp} XP</div>${lv1>lv0?`<div>🏆 Palier ${lv1} du passe !</div>`:''}</div>
  <div style="display:flex;gap:12px;justify-content:center;flex-wrap:wrap">${on?'<button class="btn green" id="againBtn">Retour au salon</button>':'<button class="btn green" id="againBtn">Rejouer</button><button class="btn blue" id="menuBtn">Menu</button>'}</div></div>`;
  $('#againBtn').onclick=()=>{e.classList.add('hidden');if(on)onlineBackToLobby();else startMatch()};
  const mb=$('#menuBtn');if(mb)mb.onclick=()=>{e.classList.add('hidden');toMenu()};
@@ -716,9 +722,61 @@ function toast(t){toastEl.textContent=t;toastEl.classList.add('on');clearTimeout
 const rarChip=r=>`<span class="rar" style="background:${RAR[r].c}">${RAR[r].n}</span>`;
 function bars(s,lv){const m=statMul(lv),L=['Vitesse','Tir','Contrôle'];return s.st.map((v,i)=>{const val=v*m;return `<div class="sb"><span>${L[i]}</span><i><b style="width:${Math.min(100,val/13.5*100)}%;background:${RAR[s.r].c}"></b></i><em>${val.toFixed(1)}</em></div>`}).join('')}
 function setCur(){$('#cCoins').textContent=S.coins;$('#cGems').textContent=S.gems;$('#rec').textContent=`${S.w} victoire${S.w>1?'s':''} · ${S.g} but${S.g>1?'s':''}`}
+
+/* ============ PASSE DE COMBAT (gratuit) ============ */
+const BP_N=30,BP_XP=100;   // 30 paliers, 100 XP par palier (un match rapporte ~30 à 100 XP)
+const bpLevel=()=>Math.min(BP_N,Math.floor(((S.bp&&S.bp.xp)||0)/BP_XP));
+function bpReward(i){
+ if(i===10)return{t:'shoe',id:'foudre'};if(i===20)return{t:'shoe',id:'phenix'};if(i===30)return{t:'shoe',id:'neon'};
+ if(i===5||i===15)return{t:'box',id:'or'};if(i===25)return{t:'box',id:'mythique'};
+ if(i%5===3)return{t:'box',id:'bronze'};
+ return i%2?{t:'coins',n:60+i*10}:{t:'gems',n:4+Math.floor(i/2)};
+}
+const bpTxt=r=>r.t==='shoe'?`👟 ${SH[r.id].n}`:r.t==='box'?`${BOXES[r.id].em} ${BOXES[r.id].n}`:r.t==='coins'?`🪙 ${r.n} pièces`:`💎 ${r.n} gemmes`;
+function bpClaim(i){
+ if(i>bpLevel()||S.bp.cl[i])return null;
+ const r=bpReward(i);S.bp.cl[i]=1;
+ if(r.t==='coins')S.coins+=r.n;else if(r.t==='gems')S.gems+=r.n;
+ else if(r.t==='box')S.boxes[r.id]=(S.boxes[r.id]||0)+1;
+ else if(S.owned[r.id])S.owned[r.id].extra++;else S.owned[r.id]={lv:1,extra:0};
+ return r;
+}
+function renderPass(){
+ const t=$('#tabPass');if(!t)return;
+ const top=t.scrollTop,lv=bpLevel(),xp=S.bp.xp||0,into=lv>=BP_N?BP_XP:xp%BP_XP;
+ const avail=[];for(let i=1;i<=lv;i++)if(!S.bp.cl[i])avail.push(i);
+ t.innerHTML=`<h3 class="stroke" style="text-align:center">PASSE DE COMBAT</h3>
+ <div class="card"><div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap"><div style="font-size:24px">🏆 Palier ${lv}/${BP_N}</div><button class="btn small ${avail.length?'green':'grey'}" id="bpAll" ${avail.length?'':'disabled'}>Tout réclamer (${avail.length})</button></div>
+ <div style="height:16px;background:#0b0a2a;border:3px solid #14122e;border-radius:10px;margin:8px 0 4px;overflow:hidden"><div style="height:100%;width:${into/BP_XP*100}%;background:linear-gradient(#ffe14d,#ff9a1e)"></div></div>
+ <div style="font-size:13px;opacity:.85;font-family:Arial,sans-serif">${lv>=BP_N?'Passe terminé, bravo !':`${into}/${BP_XP} XP avant le palier ${lv+1}`} · Chaque match rapporte de l'XP (victoire : plus).</div></div>
+ <div id="bpList" style="margin-top:8px"></div>`;
+ const L=t.querySelector('#bpList');
+ for(let i=1;i<=BP_N;i++){
+  const r=bpReward(i),done=!!S.bp.cl[i],can=i<=lv&&!done;
+  const d=document.createElement('div');d.className='card frow';d.style.opacity=done?.55:1;
+  if(r.t==='shoe')d.style.borderColor=RAR[SH[r.id].r].c;
+  d.innerHTML=`<div style="width:44px;font-size:22px;text-align:center">${i}</div><div style="flex:1;font-size:19px">${bpTxt(r)}</div>${done?'<div style="font-size:22px">✅</div>':can?'<button class="btn small green">Réclamer</button>':`<div style="font-size:13px;opacity:.8">🔒 ${i*BP_XP-xp} XP</div>`}`;
+  const b=d.querySelector('button');
+  if(b)b.onclick=()=>{const g=bpClaim(i);if(g){save();sfx('open');toast('Reçu : '+bpTxt(g));renderAll()}};
+  L.appendChild(d);
+ }
+ $('#bpAll').onclick=()=>{let n=0;for(let i=1;i<=lv;i++)if(bpClaim(i))n++;if(n){save();sfx('open');toast(`${n} récompense${n>1?'s':''} reçue${n>1?'s':''} !`);renderAll()}};
+ t.scrollTop=top;
+}
+
+/* ============ CODES SECRETS ============ */
+const CODES={snake:()=>{S.coins+=1000;S.gems+=1000;return '🪙 +1000 et 💎 +1000 !'}};
+function redeem(txt){
+ const c=(txt||'').trim().toLowerCase();if(!c)return toast('Entre un code');
+ if(!CODES[c])return toast('Code invalide');
+ if(S.codes[c])return toast('Code déjà utilisé sur ce compte');
+ S.codes[c]=1;const m=CODES[c]();save();sfx('open');toast('Code activé ! '+m);renderAll();
+}
 function dailyReady(){return Date.now()-S.daily>20*3600e3}
 function renderHome(){
  const s=SH[S.eq],lv=S.owned[s.id].lv;
+ document.querySelectorAll('#modeRow button').forEach(b=>{b.className='btn small '+(+b.dataset.sz===S.size?'blue':'grey')});
+ $('#modeTxt').textContent=`Match ${S.size} contre ${S.size} · 2 minutes`;
  $('#homeShoe').innerHTML=`<div style="font-size:14px;opacity:.8">TA CHAUSSURE</div><img src="${thumb(s)}" alt=""><div style="font-size:20px">${s.n}</div><div style="margin:4px 0">${rarChip(s.r)} <span class="rar" style="background:#14122e">Niv. ${lv}</span></div>${bars(s,lv)}`;
  const db=$('#dailyBtn');db.disabled=!dailyReady();db.textContent=dailyReady()?'🎁 Cadeau du jour':'🎁 Revenez plus tard';
  const row=$('#openRow');row.innerHTML='';
@@ -741,7 +799,14 @@ function renderShop(){
   };
   wrap.appendChild(d);
  });
+ const cc=document.createElement('div');cc.className='card';cc.style.marginTop='12px';
+ cc.innerHTML='<div style="font-size:18px">🔑 Code secret</div><div class="frow"><input id="codeIn" maxlength="20" placeholder="Entre un code" autocapitalize="off" autocorrect="off" autocomplete="off"><button class="btn small green" id="codeOk">Valider</button></div>';
+ t.appendChild(cc);
+ const ci=$('#codeIn');ci.value=codeTxt;ci.oninput=()=>{codeTxt=ci.value};
+ ci.onkeydown=e=>{if(e.key==='Enter')$('#codeOk').click()};
+ $('#codeOk').onclick=()=>{const v=ci.value;codeTxt='';redeem(v)};
 }
+let codeTxt='';
 function renderShoes(){
  const t=$('#tabShoes');
  const n=SHOES.filter(s=>S.owned[s.id]).length;
@@ -774,14 +839,15 @@ function showDetail(s){
   S.coins-=cost;o.extra-=need;o.lv++;save();applyStats();sfx('open');toast(`${s.n} → Niveau ${o.lv} !`);renderAll();showDetail(s);
  };
 }
-function renderAll(){setCur();renderHome();renderShop();renderShoes();if(typeof renderFriends==='function')renderFriends()}
+function renderAll(){setCur();renderHome();renderShop();renderPass();renderShoes();if(typeof renderFriends==='function')renderFriends()}
 document.querySelectorAll('.nav button').forEach(b=>b.onclick=()=>{
  sfx('ui');document.querySelectorAll('.nav button').forEach(x=>x.classList.toggle('on',x===b));
- ['Home','Shop','Shoes','Friends'].forEach(n=>$('#tab'+n).classList.toggle('hidden',n!==b.dataset.tab));
+ ['Home','Shop','Shoes','Pass','Friends'].forEach(n=>$('#tab'+n).classList.toggle('hidden',n!==b.dataset.tab));
  $('#menu').classList.toggle('solid',b.dataset.tab!=='Home');
  renderAll();
 });
-$('#playBtn').onclick=()=>{unlockAudio();ONLINE=null;myTeam=0;human=players[0];players.forEach(p=>setBot(p));applyStats();startMatch()};
+document.querySelectorAll('#modeRow button').forEach(b=>b.onclick=()=>{S.size=+b.dataset.sz;save();sfx('ui');renderHome()});
+$('#playBtn').onclick=()=>{unlockAudio();ONLINE=null;myTeam=0;setSize(S.size);human=players[0];players.forEach(p=>setBot(p));applyStats();startMatch()};
 $('#dailyBtn').onclick=()=>{unlockAudio();if(!dailyReady())return;S.daily=Date.now();S.boxes.bronze++;S.coins+=50;S.gems+=2;save();sfx('open');toast('+1 Coffre Bronze, 🪙50, 💎2 !');renderAll()};
 
 /* ============ OUVERTURE DE COFFRE ============ */

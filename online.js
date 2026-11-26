@@ -44,6 +44,7 @@ function reconcile(local,cloud,uid){
  const m=JSON.parse(JSON.stringify(cloud));
  for(const [id,o] of Object.entries(local.owned||{})){const c=m.owned[id];if(!c)m.owned[id]=o;else{c.lv=Math.max(c.lv,o.lv);c.extra=Math.max(c.extra,o.extra)}}
  m.coins=Math.max(m.coins,local.coins);m.gems=Math.max(m.gems,local.gems);
+ m.bp=m.bp||{xp:0,cl:{}};const lb=local.bp||{xp:0,cl:{}};m.bp.xp=Math.max(m.bp.xp||0,lb.xp||0);m.bp.cl=Object.assign({},m.bp.cl,lb.cl);m.codes=Object.assign({},m.codes,local.codes||{});m.size=m.size||local.size||3;
  for(const k of Object.keys(local.boxes||{}))m.boxes[k]=Math.max(m.boxes[k]||0,local.boxes[k]);
  ['w','l','d','g'].forEach(k=>m[k]=Math.max(m[k]||0,local[k]||0));
  m.v=Math.max(Date.now(),(cloud.v||0)+1);return m;
@@ -160,7 +161,7 @@ function renderFriends(){
   const status=!p?'⚪ Hors ligne':p.room?'🎮 Dans un salon':'🟢 En ligne';
   const row=document.createElement('div');row.className='frow friend';
   row.innerHTML=`<div style="flex:1"><div style="font-size:18px">${esc(u.n||'Ami')}</div><div style="font-size:12px;opacity:.85;font-family:Arial,sans-serif">${status}</div></div>`;
-  if(p&&p.room&&(!ROOM||ROOM.code!==p.room)){const b=document.createElement('button');b.className='btn small green';b.textContent='Rejoindre';b.onclick=()=>joinRoom(p.room);row.appendChild(b)}
+  if(p&&p.room&&(!ROOM||ROOM.code!==p.room)){const b=document.createElement('button');b.className='btn small green';b.textContent='Demander à rejoindre';b.onclick=()=>askJoin(fid,p.room);row.appendChild(b)}
   if(p&&ROOM&&ROOM.code!==p.room){const b=document.createElement('button');b.className='btn small blue';b.textContent='Inviter';b.onclick=()=>invite(fid);row.appendChild(b)}
   const x=document.createElement('button');x.className='btn small grey';x.textContent='✖';x.onclick=()=>removeFriend(fid);row.appendChild(x);
   L.appendChild(row);
@@ -178,13 +179,22 @@ async function addFriend(q){
 }
 async function removeFriend(fid){await NET.remove(`friends/${NET.uid}/${fid}`);await NET.remove(`friends/${fid}/${NET.uid}`)}
 function invite(fid){if(!ROOM)return;NET.set(`invites/${fid}/${NET.uid}`,{n:SOC.name,room:ROOM.code,t:Date.now()});toast('Invitation envoyée !')}
+function askJoin(fid,room){NET.set(`invites/${fid}/${NET.uid}`,{n:SOC.name,ask:1,room,t:Date.now()});toast('Demande envoyée à '+((SOC.users[fid]||{}).n||'ton ami')+' !')}
 function showInvite(from,v){
+ const mine=`invites/${NET.uid}/${from}`;
+ if(v.no){toast(`${v.n} a refusé ta demande`);NET.remove(mine);return}
+ if(v.ok){NET.remove(mine);if(!ROOM||ROOM.code!==v.room){if(ROOM)onlineLeave();joinRoom(v.room)}return}
+ if(v.ask&&(!ROOM||ROOM.st!=='lobby')){NET.remove(mine);return}   // demande reçue alors qu'on n'est plus dans un salon ouvert
  const ov=$('#inviteov');if(!ov.classList.contains('hidden')&&ov.dataset.from===from)return;
  ov.dataset.from=from;ov.classList.remove('hidden');sfx('open');
- ov.innerHTML=`<div class="card modal"><div style="font-size:26px">🎮 ${esc(v.n)}</div><div style="margin:6px 0 12px">t'invite à jouer en équipe !</div><div style="display:flex;gap:10px;justify-content:center"><button class="btn green" id="ivOk">Rejoindre</button><button class="btn grey" id="ivNo">Refuser</button></div></div>`;
- const done=()=>{ov.classList.add('hidden');NET.remove(`invites/${NET.uid}/${from}`)};
- $('#ivOk').onclick=()=>{done();if(ROOM)onlineLeave();joinRoom(v.room)};
- $('#ivNo').onclick=done;
+ const msg=v.ask?'veut rejoindre ton salon !':"t'invite à jouer en équipe !";
+ ov.innerHTML=`<div class="card modal"><div style="font-size:26px">🎮 ${esc(v.n)}</div><div style="margin:6px 0 12px">${msg}</div><div style="display:flex;gap:10px;justify-content:center"><button class="btn green" id="ivOk">${v.ask?'Accepter':'Rejoindre'}</button><button class="btn grey" id="ivNo">${v.ask?'Refuser':'Plus tard'}</button></div></div>`;
+ const done=()=>{ov.classList.add('hidden');NET.remove(mine)};
+ $('#ivOk').onclick=()=>{
+  if(v.ask){if(ROOM&&ROOM.st==='lobby')NET.set(`invites/${from}/${NET.uid}`,{n:SOC.name,room:ROOM.code,ok:1,t:Date.now()});done();toast('Demande acceptée')}
+  else{done();if(ROOM)onlineLeave();joinRoom(v.room)}
+ };
+ $('#ivNo').onclick=()=>{if(v.ask)NET.set(`invites/${from}/${NET.uid}`,{n:SOC.name,no:1,t:Date.now()});done()};
 }
 
 /* ---------- salons ---------- */
@@ -200,7 +210,7 @@ async function createRoom(){
  let code;for(let i=0;i<8;i++){const c=rcode(5);if(!(await NET.once('rooms/'+c))){code=c;break}}
  if(!code)return toast('Erreur de création');
  const uid=NET.uid;
- await NET.set('rooms/'+code,{host:uid,st:'lobby',m:{[uid]:myMember()}});
+ await NET.set('rooms/'+code,{host:uid,st:'lobby',size:S.size||3,m:{[uid]:myMember()}});
  NET.onDisc('rooms/'+code);
  enterRoom(code,uid);
 }
@@ -212,8 +222,8 @@ async function joinRoom(code){
  const r=await NET.once('rooms/'+code);
  if(!r)return toast('Salon introuvable');
  if(r.st==='play')return toast('Un match est déjà en cours');
- const R=roster(r.m);if(R[0].length+R[1].length>=6)return toast('Salon plein');
- let team=R[0].length<=R[1].length?0:1;if(R[team].length>=3)team=1-team;
+ const SZ=r.size||3,R=roster(r.m);if(R[0].length+R[1].length>=2*SZ)return toast('Salon plein');
+ let team=R[0].length<=R[1].length?0:1;if(R[team].length>=SZ)team=1-team;
  const m=myMember();m.team=team;
  if(ROOM)onlineLeave();
  await NET.set(`rooms/${code}/m/${NET.uid}`,m);
@@ -221,10 +231,11 @@ async function joinRoom(code){
  enterRoom(code,r.host);
 }
 function enterRoom(code,host){
- ROOM={code,host,m:{},st:'lobby',un:[],hostSeen:false};
+ ROOM={code,host,m:{},st:'lobby',size:3,un:[],hostSeen:false};
  NET.update('presence/'+NET.uid,{room:code});
  ROOM.un.push(NET.on(`rooms/${code}/host`,h=>{if(!ROOM||ROOM.code!==code)return;if(h==null){if(ROOM.hostSeen)roomClosed();return}ROOM.host=h;ROOM.hostSeen=true;renderLobby()}));
  ROOM.un.push(NET.on(`rooms/${code}/m`,m=>{if(!ROOM||ROOM.code!==code)return;ROOM.m=m||{};renderLobby();if(ONLINE&&ONLINE.host)hostSyncMembers()}));
+ ROOM.un.push(NET.on(`rooms/${code}/size`,v=>{if(!ROOM||ROOM.code!==code)return;ROOM.size=+v||3;renderLobby()}));
  ROOM.un.push(NET.on(`rooms/${code}/st`,st=>{if(!ROOM||ROOM.code!==code)return;ROOM.st=st;onRoomState(st)}));
  $('#inviteov').classList.add('hidden');showLobby();
 }
@@ -249,16 +260,18 @@ function onlineLeave(){
 function renderLobby(){
  const L=$('#lobby');if(!ROOM||L.classList.contains('hidden'))return;
  const R=roster(ROOM.m),host=ROOM.host===NET.uid,uid=NET.uid;
- const slots=t=>[0,1,2].map(k=>{const u=R[t][k];return u?`<div class="slot full">${u.uid===uid?'⭐ ':''}${esc(u.n)}${u.uid===ROOM.host?' 👑':''}</div>`:'<div class="slot">🤖 Bot</div>'}).join('');
+ const SZ=ROOM.size||3;
+ const slots=t=>Array.from({length:SZ},(_,k)=>k).map(k=>{const u=R[t][k];return u?`<div class="slot full">${u.uid===uid?'⭐ ':''}${esc(u.n)}${u.uid===ROOM.host?' 👑':''}</div>`:'<div class="slot">🤖 Bot</div>'}).join('');
  const online=Object.keys(SOC.friends||{}).filter(f=>SOC.pres[f]&&SOC.pres[f].room!==ROOM.code);
  L.innerHTML=`<div class="topbar"><div class="logo stroke">SALON<small>Code : <b style="font-size:22px;letter-spacing:3px;color:#fff">${ROOM.code}</b></small></div><button class="btn small blue" id="lcCopy">Copier le code</button><button class="btn small red" id="lcQuit">Quitter</button></div>
- <div class="content" style="overflow:auto;padding:6px 14px"><div class="teams">
+ <div class="content" style="overflow:auto;padding:6px 14px"><div class="card" style="margin-bottom:10px;display:flex;align-items:center;gap:8px;flex-wrap:wrap"><div style="font-size:18px;flex:1;min-width:120px">Mode : ${SZ} contre ${SZ}</div>${host?[1,2,3].map(n=>`<button class="btn small ${n===SZ?'blue':'grey'}" data-sz="${n}">${n}v${n}</button>`).join(''):''}</div><div class="teams">
   ${[0,1].map(t=>`<div class="card team"><div class="stroke" style="font-size:22px;color:${t?'#ff8a8a':'#7cc8ff'}">${t?'ÉQUIPE ROUGE':'ÉQUIPE BLEUE'}</div>${slots(t)}<button class="btn small ${t?'red':'blue'}" data-t="${t}">Rejoindre cette équipe</button></div>`).join('')}</div>
   <div class="card" style="margin-top:10px"><div style="font-size:18px;margin-bottom:6px">Inviter un ami en ligne</div>${online.length?online.map(f=>`<div class="frow friend"><div style="flex:1;font-size:18px">${esc((SOC.users[f]||{}).n||'Ami')}</div><button class="btn small green" data-inv="${f}">Inviter</button></div>`).join(''):'<div style="opacity:.7;font-size:14px;font-family:Arial,sans-serif">Aucun ami disponible. Partage le code du salon !</div>'}</div></div>
  <div class="nav">${host?'<button class="on" id="lcStart">▶ LANCER LE MATCH</button>':'<button disabled style="opacity:.7">En attente de l\'hôte…</button>'}</div>`;
  $('#lcCopy').onclick=()=>{try{navigator.clipboard.writeText(ROOM.code);toast('Code copié !')}catch(e){toast('Code : '+ROOM.code)}};
  $('#lcQuit').onclick=()=>{onlineLeave();toMenu()};
- L.querySelectorAll('[data-t]').forEach(b=>b.onclick=()=>{const t=+b.dataset.t,me=(ROOM.m||{})[uid];if(!me||me.team===t)return;if(R[t].length>=3)return toast('Équipe pleine');NET.update(`rooms/${ROOM.code}/m/${uid}`,{team:t,ts:Date.now()});sfx('ui')});
+ L.querySelectorAll('[data-t]').forEach(b=>b.onclick=()=>{const t=+b.dataset.t,me=(ROOM.m||{})[uid];if(!me||me.team===t)return;if(R[t].length>=SZ)return toast('Équipe pleine');NET.update(`rooms/${ROOM.code}/m/${uid}`,{team:t,ts:Date.now()});sfx('ui')});
+ L.querySelectorAll('[data-sz]').forEach(b=>b.onclick=()=>{const n=+b.dataset.sz;if(n===SZ)return;if(Math.max(R[0].length,R[1].length)>n)return toast('Trop de joueurs dans une équipe pour ce mode');NET.set(`rooms/${ROOM.code}/size`,n);sfx('ui')});
  L.querySelectorAll('[data-inv]').forEach(b=>b.onclick=()=>invite(b.dataset.inv));
  const st=$('#lcStart');if(st)st.onclick=hostStart;
 }
@@ -269,7 +282,8 @@ function onRoomState(st){
 }
 
 /* ---------- lancement d'un match ---------- */
-function configPlayers(cfg,host){
+function configPlayers(cfgIn,host){
+ const cfg=Array.isArray(cfgIn)?cfgIn:(cfgIn.c||[]);setSize(Array.isArray(cfgIn)?3:(cfgIn.n||3));
  players.forEach(p=>setBot(p));
  for(const c of cfg){
   const p=players[c.t*3+c.k];if(!p)continue;
@@ -281,12 +295,14 @@ function configPlayers(cfg,host){
 }
 async function hostStart(){
  if(!ROOM||ROOM.host!==NET.uid)return;
- const R=roster(ROOM.m),cfg=[];
- [0,1].forEach(t=>R[t].slice(0,3).forEach((u,k)=>cfg.push({u:u.uid,t,k,n:u.n,s:u.shoe,l:u.lv})));
+ const SZ=ROOM.size||3,R=roster(ROOM.m),cfg=[];
+ if(R[0].length>SZ||R[1].length>SZ)return toast('Trop de joueurs dans une équipe pour ce mode');
+ [0,1].forEach(t=>R[t].slice(0,SZ).forEach((u,k)=>cfg.push({u:u.uid,t,k,n:u.n,s:u.shoe,l:u.lv})));
  const code=ROOM.code;
  await NET.remove(`rooms/${code}/in`);await NET.remove(`rooms/${code}/s`);
- await NET.set(`rooms/${code}/cfg`,JSON.stringify(cfg));
- configPlayers(cfg,true);
+ const cfgObj={n:SZ,c:cfg};
+ await NET.set(`rooms/${code}/cfg`,JSON.stringify(cfgObj));
+ configPlayers(cfgObj,true);
  ONLINE={host:true,code,evs:[],evSeq:0,acc:0,un:[]};
  ONLINE.un.push(NET.on(`rooms/${code}/in`,v=>{v=v||{};players.forEach(p=>{if(p.remote&&v[p.uid])p.rin=v[p.uid]})}));
  startMatch();
@@ -302,7 +318,7 @@ async function startOnlineClient(){
  configPlayers(JSON.parse(raw),false);
  O.un.push(NET.on(`rooms/${code}/s`,str=>{if(str&&ONLINE===O)onSnap(JSON.parse(str))}));
  $('#menu').classList.add('hidden');$('#lobby').classList.add('hidden');$('#endov').classList.add('hidden');$('#hud').classList.remove('hidden');
- players.forEach(p=>{p.g.visible=true});ballMesh.visible=true;
+ players.forEach(p=>{p.g.visible=!p.off});ballMesh.visible=true;
  score=[0,0];timeLeft=120;ot=false;inMatch=true;resetPositions();updHUD();
  state='countdown';stateT=0;lastCd=4;paused=false;inp.x=inp.z=0;inp.shoot=inp.dash=false;checkRot();
 }

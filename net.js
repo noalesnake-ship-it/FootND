@@ -181,7 +181,7 @@ function makeSupabaseNet(cfg){
  }
  /* hôte / membres : valeurs de la base filtrées par la présence réelle dans le salon */
  function roomView(r,kind,cb){
-  let raw=undefined,last='\u0000',tm=null,missSince=0;const first={};
+  let raw=undefined,last='\u0000',tm=null,missSince=0;const miss={};
   const emit=v=>{if(!same(v,last)){last=v;cb(v)}};
   const run=()=>{
    clearTimeout(tm);if(raw===undefined)return;
@@ -196,11 +196,11 @@ function makeSupabaseNet(cfg){
     emit(out);
    }else{
     const out={};let any=false;const now=Date.now();
-    for(const u of Object.keys(first))if(!raw||!(u in raw))delete first[u];
+    for(const u of Object.keys(miss))if(!raw||!(u in raw))delete miss[u];
     for(const u of Object.keys(raw||{})){
-     if(!first[u])first[u]=now;
      const present=u===n.uid||!r.psync||r.pres.includes(u);
-     if(present||now-first[u]<GRACE){out[u]=raw[u];any=true;if(!present)wait=Math.max(wait,GRACE-(now-first[u])+50)}
+     if(present)delete miss[u];else if(!miss[u])miss[u]=now;
+     if(present||now-miss[u]<GRACE){out[u]=raw[u];any=true;if(!present)wait=Math.max(wait,GRACE-(now-miss[u])+50)}
     }
     emit(any?out:null);
    }

@@ -165,19 +165,22 @@ h3{margin:4px 0 8px;font-size:22px;font-weight:normal}
       </div>
       <div class="col" style="align-items:center">
         <button class="btn big green" id="playBtn">JOUER</button>
-        <div style="font-size:14px;opacity:.9;text-align:center;text-shadow:0 2px 0 #000">Match 3 contre 3 · 2 minutes</div>
+        <div id="modeRow" style="display:flex;gap:8px"><button class="btn small" data-sz="1">1v1</button><button class="btn small" data-sz="2">2v2</button><button class="btn small" data-sz="3">3v3</button></div>
+        <div id="modeTxt" style="font-size:14px;opacity:.9;text-align:center;text-shadow:0 2px 0 #000">Match 3 contre 3 · 2 minutes</div>
         <button class="btn blue" id="dailyBtn">🎁 Cadeau du jour</button>
         <div class="openRow" id="openRow"></div>
       </div>
     </section>
     <section class="tab hidden" id="tabShop"></section>
     <section class="tab hidden" id="tabShoes"></section>
+    <section class="tab hidden" id="tabPass"></section>
     <section class="tab hidden" id="tabFriends"></section>
   </div>
   <div class="nav">
     <button data-tab="Home" class="on">🏠 Accueil</button>
     <button data-tab="Shop">🛒 Boutique</button>
     <button data-tab="Shoes">👟 Chaussures</button>
+    <button data-tab="Pass">🏆 Passe</button>
     <button data-tab="Friends">👥 Amis</button>
   </div>
 </div>
