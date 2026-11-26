@@ -16,8 +16,8 @@ const PSEUDO_RE=/^[A-Za-z0-9_-]{3,14}$/;
 function ensureSoc(){
  if(SOCP)return SOCP;
  SOCP=(async()=>{
-  const cfg=window.KB_FIREBASE;
-  NET=(cfg&&cfg.apiKey&&cfg.databaseURL)?makeFirebaseNet(cfg):makeLocalNet();
+  const cfg=window.KB_SUPABASE;
+  NET=(cfg&&cfg.url&&cfg.key)?makeSupabaseNet(cfg):makeLocalNet();
   await NET.ready;
   SOC.err='';
   if(NET.uid)await startSession();
@@ -30,7 +30,8 @@ const authMsg=e=>{
  if(c==='auth/email-already-in-use')return 'Ce pseudo est déjà pris';
  if(['auth/wrong-password','auth/invalid-credential','auth/user-not-found','auth/invalid-login-credentials'].includes(c))return 'Pseudo ou mot de passe incorrect';
  if(c==='auth/weak-password')return 'Mot de passe trop court (6 caractères minimum)';
- if(c==='auth/operation-not-allowed')return "Dans Firebase > Authentication, active « E-mail/Mot de passe »";
+ if(c==='auth/operation-not-allowed')return "Dans Supabase > Authentication, active la connexion par e-mail";
+ if(c==='auth/confirm-required')return "Dans Supabase > Authentication > Sign In / Providers > Email, désactive « Confirm email »";
  if(c==='auth/network-request-failed')return 'Pas de connexion internet';
  if(c==='auth/too-many-requests')return 'Trop d\'essais, réessaie dans quelques minutes';
  return String(e&&e.message||c||'Erreur');
@@ -142,7 +143,7 @@ function renderFriends(){
  const loggedIn=!!(NET&&NET.uid&&SOC.ready);
  if(SOC.err){st.textContent='⚠ '+SOC.err;st.style.color='#ff9a9a'}
  else if(!NET){st.textContent='Connexion au serveur…';st.style.color='#fff'}
- else if(NET.kind==='local'){st.textContent='🧪 Mode test local : aucun serveur Firebase configuré. Les comptes et amis ne sont partagés qu\'entre onglets de CE navigateur, pas entre appareils.';st.style.color='#ffd23a'}
+ else if(NET.kind==='local'){st.textContent='🧪 Mode test local : aucun serveur Supabase configuré. Les comptes et amis ne sont partagés qu\'entre onglets de CE navigateur, pas entre appareils.';st.style.color='#ffd23a'}
  else if(!NET.uid){st.textContent='Connecte-toi ou crée un compte';st.style.color='#fff'}
  else{st.textContent='🟢 Connecté';st.style.color='#7dff5a'}
  auth.classList.toggle('hidden',!(NET&&!NET.uid));
