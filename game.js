@@ -656,10 +656,19 @@ const touchEl=$('#touch'),joy=$('#joy'),joyHint=$('#joyHint'),knob=joy.firstElem
 let jid=null,jox=0,joy0=0;const JR=55;
 touchEl.addEventListener('pointerdown',e=>{
  unlockAudio();
+ // souris (PC) : clic gauche = tirer, clic droit = booster ; pas de joystick tactile
+ if(e.pointerType==='mouse'){
+  if(!inMatch)return;
+  e.preventDefault();
+  if(e.button===0){inp.shoot=true;setTimeout(()=>inp.shoot=false,250)}
+  else if(e.button===2){inp.dash=true;setTimeout(()=>inp.dash=false,250)}
+  return;
+ }
  if(!inMatch||jid!==null||e.clientX>innerWidth*.6)return;
  jid=e.pointerId;jox=e.clientX;joy0=e.clientY;touchEl.setPointerCapture(jid);
  joy.style.display='block';joy.style.left=jox+'px';joy.style.top=joy0+'px';knob.style.transform='';joyHint.style.display='none';
 });
+touchEl.addEventListener('contextmenu',e=>e.preventDefault());
 touchEl.addEventListener('pointermove',e=>{
  if(e.pointerId!==jid)return;
  let dx=e.clientX-jox,dy=e.clientY-joy0;const l=Math.hypot(dx,dy);
@@ -691,14 +700,28 @@ let padOn=false,padMoved=false,padPrev={};
 function padBtn(gp,i){const b=gp.buttons[i];return !!(b&&(b.pressed||b.value>.5))}
 function pollPad(){
  const list=navigator.getGamepads?navigator.getGamepads():[];
- let gp=null;for(const g of list){if(g&&g.connected){gp=g;break}}
- if(!gp){if(padOn){padOn=false;$('#joyHint').style.display=''}return}
+ const pads=[];for(const g of list){if(g&&g.connected)pads.push(g)}
+ if(!pads.length){if(padOn){padOn=false;$('#joyHint').style.display=''}return}
  if(!padOn){padOn=true;$('#joyHint').style.display='none';toast('🎮 Manette connectée')}
- let x=gp.axes[0]||0,z=gp.axes[1]||0;
- if(padBtn(gp,14))x-=1;if(padBtn(gp,15))x+=1;if(padBtn(gp,12))z-=1;if(padBtn(gp,13))z+=1;
+ // plusieurs manettes (ex. deux Joy-Con séparés) : on fusionne tout, le stick le plus poussé gagne
+ let x=0,z=0,best=-1;const down={shoot:false,dash:false,menu:false};
+ for(const gp of pads){
+  const nin=/nintendo|switch|joy-?con|pro controller|057e/i.test(gp.id||'');     // Nintendo : A est à droite, B en bas
+  const B=i=>padBtn(gp,i);
+  let px=gp.axes[0]||0,pz=gp.axes[1]||0;
+  if(B(14))px-=1;if(B(15))px+=1;if(B(12))pz-=1;if(B(13))pz+=1;               // croix directionnelle (mapping standard)
+  if(gp.axes.length>9&&gp.mapping!=='standard'){                              // croix en "chapeau" (Switch en mapping brut)
+   const h=gp.axes[9];
+   if(h>=-1.05&&h<=1.05){const k=Math.round((h+1)*3.5);const D=[[0,-1],[1,-1],[1,0],[1,1],[0,1],[-1,1],[-1,0],[-1,-1]][k];if(D){px+=D[0];pz+=D[1]}}
+  }
+  const m=Math.hypot(px,pz);if(m>best){best=m;x=px;z=pz}
+  const face=nin?{s:[1],d:[0,2,3]}:{s:[0],d:[1,2,3]};
+  if(face.s.some(B)||B(5)||B(7))down.shoot=true;
+  if(face.d.some(B)||B(4)||B(6))down.dash=true;
+  if(B(9)||B(8))down.menu=true;
+ }
  let m=Math.hypot(x,z);if(m<.2){x=z=0;m=0}else if(m>1){x/=m;z/=m}
  if(m>0||padMoved){if(jid===null){inp.x=x;inp.z=z}padMoved=m>0}
- const down={shoot:padBtn(gp,0)||padBtn(gp,5)||padBtn(gp,7),dash:padBtn(gp,2)||padBtn(gp,1)||padBtn(gp,3)||padBtn(gp,4)||padBtn(gp,6),menu:padBtn(gp,9)||padBtn(gp,8)};
  const rise=k=>down[k]&&!padPrev[k];
  if(inMatch){
   if(rise('shoot'))inp.shoot=true;
