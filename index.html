@@ -63,6 +63,7 @@ html,body{margin:0;height:100%;overflow:hidden;background:#1b1464;font-family:'L
 .pill{background:rgba(10,8,50,.75);border:3px solid #14122e;border-radius:20px;padding:4px 14px;font-size:20px;display:flex;gap:6px;align-items:center;white-space:nowrap}
 .content{flex:1;min-height:0;position:relative}
 .tab{position:absolute;inset:0;padding:6px 14px;overflow:auto;-webkit-overflow-scrolling:touch;touch-action:pan-y}
+#tabHome .col{min-height:0}#tabHome .col+.col{gap:6px;overflow-y:auto;justify-content:flex-start;padding-bottom:2px}#tabHome .col+.col>:first-child{margin-top:auto}
 #tabHome{display:flex;align-items:stretch;justify-content:space-between;gap:12px;overflow:hidden}
 .col{display:flex;flex-direction:column;gap:10px;justify-content:center}
 .card{background:rgba(20,16,70,.82);border:4px solid #14122e;border-radius:18px;padding:10px 12px;box-shadow:0 5px 0 rgba(0,0,0,.35)}
@@ -132,6 +133,15 @@ h3{margin:4px 0 8px;font-size:22px;font-weight:normal}
  .btn.big{font-size:30px;padding:10px 30px}.shoeCard{width:190px;padding:6px}.shoeCard img{width:90px;height:90px}
  #banner{font-size:64px}.boxCard .em{font-size:50px}.boxCard{width:190px}.topbar{padding:4px 12px}.logo{font-size:20px}
  #bShoot{width:96px;height:96px}#bDash{width:70px;height:70px;right:calc(136px + env(safe-area-inset-right))}
+}
+@media (max-height:460px){
+ #tabHome .col+.col .btn.big{font-size:26px;padding:5px 26px;border-radius:16px}
+ #tabHome .col+.col .btn:not(.big){font-size:15px;padding:5px 12px;border-width:3px;border-radius:12px}
+ #tabHome .col+.col .btn.small{font-size:14px;padding:4px 10px}
+ #tabHome .openRow{max-width:300px}#tabHome .openRow .btn{font-size:13px;padding:3px 8px}
+ #evTxt{font-size:11px!important}
+ .nav{padding:4px 10px calc(4px + env(safe-area-inset-bottom))}.nav button{font-size:14px;padding:5px 2px;border-width:3px;border-radius:12px;box-shadow:0 3px 0 #120c55}
+ .shoeCard{width:170px}.shoeCard img{width:70px;height:70px}.pill{font-size:17px;padding:2px 10px}
 }
 @media (max-height:420px){#reveal img{width:100px;height:100px}#reveal .card{padding:8px}#reveal .card>div:first-child{font-size:22px!important}.modal img{width:100px;height:100px}}
 @media (orientation:portrait){#tabHome{flex-direction:column-reverse;align-items:center;overflow:auto}}

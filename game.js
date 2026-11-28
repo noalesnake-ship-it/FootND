@@ -774,14 +774,18 @@ function updCam(dt){
  const sx=(Math.random()-.5)*shk*.7,sy=(Math.random()-.5)*shk*.5;
  cam.position.set(camX+sx,dist*.84+sy,camZ+dist*.54);cam.lookAt(camX,0,camZ);
 }
+let rsW=0,rsH=0,rsD=0;
 function resize(){
- const w=innerWidth,h=innerHeight;renderer.setSize(w,h,false);cam.aspect=w/h;cam.updateProjectionMatrix();checkRot();
+ // taille réelle affichée (sur iPhone, innerWidth/innerHeight peuvent être périmés juste après une rotation)
+ const w=canvas.clientWidth||innerWidth,h=canvas.clientHeight||innerHeight;
+ rsW=w;rsH=h;rsD=window.devicePixelRatio||1;
+ renderer.setPixelRatio(Math.min(rsD,2));renderer.setSize(w,h,false);cam.aspect=w/h;cam.updateProjectionMatrix();checkRot();
 }
 function checkRot(){
  const portrait=innerHeight>innerWidth*1.05;
  $('#rot').classList.toggle('hidden',!(portrait&&inMatch));
 }
-addEventListener('resize',resize);addEventListener('orientationchange',()=>setTimeout(resize,200));
+addEventListener('resize',resize);if(window.visualViewport)visualViewport.addEventListener('resize',resize);addEventListener('orientationchange',()=>setTimeout(resize,200));
 document.addEventListener('visibilitychange',()=>{if(document.hidden&&inMatch&&!paused&&!ONLINE)setPause(true)});
 
 let fpsN=0,fpsT=0,fpsEl=null;
@@ -795,6 +799,7 @@ function loop(t){
  requestAnimationFrame(loop);
  let dt=Math.min(.05,(t-last)/1000);last=t;
  pollPad();fpsTick(t);
+ if(Math.abs(cam.aspect-canvas.clientWidth/(canvas.clientHeight||1))>.01||canvas.clientWidth!==rsW||canvas.clientHeight!==rsH||(window.devicePixelRatio||1)!==rsD)resize();
  const rot=!$('#rot').classList.contains('hidden');
  const freeze=paused||(rot&&!ONLINE);
  if(!freeze){
@@ -964,10 +969,10 @@ function renderHome(){
  const s=SH[S.eq],lv=S.owned[s.id].lv;
  document.querySelectorAll('#modeRow button').forEach(b=>{b.className='btn small '+(+b.dataset.sz===S.size?'blue':'grey')});
  const M=MODES[modeSel];
- $('#modeTxt').textContent=`Match ${S.size} contre ${S.size} · ${M.goals?'premier à '+M.goals:fmt(M.t)}`;
+ $('#modeTxt').style.display='none';
  let mb=$('#modeBtn');
  if(!mb){mb=document.createElement('button');mb.id='modeBtn';mb.className='btn small';mb.onclick=()=>{sfx('ui');showModes()};$('#modeTxt').after(mb)}
- mb.className='btn small '+(modeSel==='classic'?'blue':'green');mb.textContent=`${M.em} Mode : ${M.n} ▾`;
+ mb.className='btn small '+(modeSel==='classic'?'blue':'green');mb.textContent=`${M.em} ${M.n} · ${S.size}v${S.size} · ${M.goals?'à '+M.goals+' buts':fmt(M.t)} ▾`;
  let ev=$('#evTxt');if(!ev){ev=document.createElement('div');ev.id='evTxt';ev.style.cssText='font-size:13px;color:#ffd23a;text-align:center;text-shadow:0 2px 0 #000;font-family:Arial,sans-serif;font-weight:bold';mb.after(ev)}
  ev.textContent=eventMul()>1?'🔥 Week-end : pièces ×2 !':'';
  $('#homeShoe').innerHTML=`<div style="font-size:14px;opacity:.8">TA CHAUSSURE</div><img src="${thumb(s)}" alt=""><div style="font-size:20px">${s.n}</div><div style="margin:4px 0">${rarChip(s.r)} <span class="rar" style="background:#14122e">Niv. ${lv}</span></div>${bars(s,lv)}`;
