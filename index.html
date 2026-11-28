@@ -75,7 +75,7 @@ html,body{margin:0;height:100%;overflow:hidden;background:#1b1464;font-family:'L
 .sb b{display:block;height:100%}
 .openRow{display:flex;gap:6px;flex-wrap:wrap;justify-content:center;max-width:240px}
 .nav{display:flex;gap:6px;padding:6px 10px 10px}
-.nav button{flex:1;font:inherit;font-size:18px;color:#fff;background:linear-gradient(#4a3bd0,#2b1d8f);border:4px solid #14122e;border-radius:14px;padding:8px 4px;box-shadow:0 5px 0 #120c55}
+.nav button{flex:1;min-width:0;font:inherit;font-size:16px;white-space:nowrap;color:#fff;background:linear-gradient(#4a3bd0,#2b1d8f);border:4px solid #14122e;border-radius:14px;padding:8px 4px;box-shadow:0 5px 0 #120c55}
 .nav button.on{background:linear-gradient(#ffe14d,#ffb300);box-shadow:0 5px 0 #8a5a00;text-shadow:0 2px 0 #14122e}
 .boxes{display:flex;gap:12px;flex-wrap:wrap;justify-content:center;align-items:stretch}
 .boxCard{width:210px;text-align:center;display:flex;flex-direction:column;align-items:center;gap:6px}
@@ -175,6 +175,7 @@ h3{margin:4px 0 8px;font-size:22px;font-weight:normal}
     <section class="tab hidden" id="tabShoes"></section>
     <section class="tab hidden" id="tabPass"></section>
     <section class="tab hidden" id="tabFriends"></section>
+    <section class="tab hidden" id="tabMore"></section>
   </div>
   <div class="nav">
     <button data-tab="Home" class="on">🏠 Accueil</button>
@@ -182,6 +183,7 @@ h3{margin:4px 0 8px;font-size:22px;font-weight:normal}
     <button data-tab="Shoes">👟 Chaussures</button>
     <button data-tab="Pass">🏆 Passe</button>
     <button data-tab="Friends">👥 Amis</button>
+    <button data-tab="More">✨ Plus</button>
   </div>
 </div>
 
@@ -202,5 +204,6 @@ h3{margin:4px 0 8px;font-size:22px;font-weight:normal}
 <script src="net.js"></script>
 <script src="game.js"></script>
 <script src="online.js"></script>
+<script src="updater.js"></script>
 </body>
 </html>
